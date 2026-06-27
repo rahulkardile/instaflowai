@@ -1,5 +1,5 @@
 import { Schema, model } from "mongoose";
-import { IUser, UserRole, AuthProvider } from "../types/userTypes"
+import { IUser, UserRole, AuthProvider } from "../types/userTypes";
 
 const userSchema = new Schema<IUser>(
   {
@@ -37,6 +37,12 @@ const userSchema = new Schema<IUser>(
       index: true,
     },
 
+    passwordHash: {
+      type: String,
+      select: false,
+      default: null,
+    },
+
     avatar: {
       type: String,
       default: null,
@@ -56,14 +62,32 @@ const userSchema = new Schema<IUser>(
       type: Date,
       default: null,
     },
+    givenName: {
+      type: String,
+      default: null,
+    },
+
+    familyName: {
+      type: String,
+      default: null,
+    },
+
+    emailVerified: {
+      type: Boolean,
+      default: false,
+    },
+
+    locale: {
+      type: String,
+      default: null,
+    },
   },
   {
     timestamps: true,
     versionKey: false,
-  }
+  },
 );
 
-userSchema.index({ email: 1 });
-userSchema.index({ provider: 1, providerId: 1});
+userSchema.index({ provider: 1, providerId: 1 });
 
-export const User = model<IUser>( "User", userSchema );
+export const User = model<IUser>("User", userSchema);

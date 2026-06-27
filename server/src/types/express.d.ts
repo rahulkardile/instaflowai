@@ -1,8 +1,10 @@
 import { AuthUser } from "./userTypes"
 
-declare namespace Express {
-  interface Request {
-    user?: AuthUser;
+declare global {
+  namespace Express {
+    interface Request {
+      user?: AuthUser & { id: string };
+    }
   }
 }
 

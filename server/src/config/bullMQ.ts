@@ -1,9 +1,11 @@
 import { Queue } from "bullmq";
-import { redis } from "../config/redis";
 
 export const commentQueue = new Queue(
   "comment-processing",
   {
-    connection: redis
+    connection: {
+      host: process.env.REDIS_HOST,
+      port: Number(process.env.REDIS_PORT),
+    },
   }
 );
