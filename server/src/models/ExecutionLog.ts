@@ -7,6 +7,7 @@ const ExecutionLogSchema = new mongoose.Schema(
       ref: "Automation",
     },
     commenterId: String,
+    commenterUsername: String,
     commentId: String,
     commentText: String,
     action: {

@@ -5,6 +5,8 @@ import helmet from "helmet";
 import compression from "compression";
 import { connectDB } from "./config/db";
 import { authRoutes } from "./modules/auth/auth.routes";
+import { instagramRoutes } from "./modules/instagram/instagram.routes";
+import { automationRoutes } from "./modules/automation/automation.routes";
 
 const app = express();
 dotenv.config();
@@ -30,6 +32,8 @@ app.get("/health", (_, res) => {
 });
 
 app.use("/api/auth", authRoutes);
+app.use("/api/instagram", instagramRoutes);
+app.use("/api/automations", automationRoutes);
 
 const PORT = Number(process.env.PORT) || 5000;
 

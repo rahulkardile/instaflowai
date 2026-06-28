@@ -1,11 +1,14 @@
+import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import Container from "./Container";
 import { auth } from "../../utils/auth";
-import { LogOut, LayoutDashboard } from "lucide-react";
+import api from "../../utils/api";
+import { LogOut, LayoutDashboard, Loader2, Camera } from "lucide-react";
 
 export default function Header() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [connectingIG, setConnectingIG] = useState(false);
 
   const session = auth.get();
   const user = session?.user;
@@ -15,6 +18,17 @@ export default function Header() {
   const logout = () => {
     auth.logout();
     navigate("/login", { replace: true });
+  };
+
+  const handleConnectInstagram = async () => {
+    setConnectingIG(true);
+    try {
+      const { data } = await api.get("/instagram/auth");
+      window.location.href = data.data.url;
+    } catch (err) {
+      console.error("Failed to start Instagram auth:", err);
+      setConnectingIG(false);
+    }
   };
 
   const isLanding =
@@ -107,9 +121,17 @@ export default function Header() {
               </Link>
 
               {!user?.instagramConnected && (
-                <button className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-500 px-5 py-2.5 font-semibold text-white shadow-lg transition hover:scale-105">
-                  {/* <Instagram size={18} /> */}
-                  Connect Instagram
+                <button
+                  onClick={handleConnectInstagram}
+                  disabled={connectingIG}
+                  className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-500 px-5 py-2.5 font-semibold text-white shadow-lg transition hover:scale-105 disabled:opacity-60 disabled:hover:scale-100"
+                >
+                  {connectingIG ? (
+                    <Loader2 size={18} className="animate-spin" />
+                  ) : (
+                    <Camera size={18} />
+                  )}
+                  {connectingIG ? "Connecting…" : "Connect Instagram"}
                 </button>
               )}
 

@@ -1,10 +1,9 @@
-import React from "react";
 import { Routes, Route } from "react-router-dom";
 import Login from "./pages/Login";
 import ProtectedRoute from "./components/ProtectedRoute";
-import Home from "./pages/Dashboard";
-import Landing from "./pages/Landing";
 import Dashboard from "./pages/Dashboard";
+import Landing from "./pages/Landing";
+import Reels from "./pages/Reels";
 
 export default function App() {
   return (
@@ -16,6 +15,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/reels"
+        element={
+          <ProtectedRoute>
+            <Reels />
           </ProtectedRoute>
         }
       />
