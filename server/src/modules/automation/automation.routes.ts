@@ -14,6 +14,7 @@ const createAutomationSchema = z.object({
   keywords: z.array(z.string()).default([]),
   commentReply: z.string().optional(),
   dmMessage: z.string().optional(),
+  active: z.boolean().optional().default(true),
 });
 
 const updateAutomationSchema = z.object({
@@ -32,7 +33,7 @@ automationRoutes.get("/", async (req: Request, res: Response) => {
     const automations = await Automation.find({ userId: req.user!.userId }).populate(
       "instagramAccountId"
     );
-    return res.status(200).json({ success: true, data: { automations } });
+    return res.status(200).json({ success: true, data: automations });
   } catch (error) {
     return res.status(500).json({
       success: false,
@@ -71,6 +72,7 @@ automationRoutes.post("/", async (req: Request, res: Response) => {
       keywords: parsed.data.keywords,
       commentReply: parsed.data.commentReply,
       dmMessage: parsed.data.dmMessage,
+      enabled: parsed.data.active ?? true,
     });
 
     return res.status(201).json({ success: true, data: { automation } });
@@ -158,7 +160,7 @@ automationRoutes.get("/logs", async (req: Request, res: Response) => {
       .limit(100)
       .populate("automationId");
 
-    return res.status(200).json({ success: true, data: { logs } });
+    return res.status(200).json({ success: true, data: logs });
   } catch (error) {
     return res.status(500).json({
       success: false,

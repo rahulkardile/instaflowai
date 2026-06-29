@@ -143,9 +143,7 @@ export class InstagramService {
     console.log("--- Fetching Instagram Media ---");
     console.log("Instagram User ID:", igAccount.instagramUserId);
 
-    const mediaRes = await fetch(
-      `https://graph.instagram.com/v20.0/me/media?fields=${fields}&access_token=${igAccount.accessToken}`
-    );
+    const mediaRes = await fetch(`https://graph.instagram.com/v20.0/me/media?fields=${fields}&access_token=${igAccount.accessToken}`);
     const mediaData = (await mediaRes.json()) as {
       data?: Array<{
         id: string;
@@ -190,40 +188,60 @@ export class InstagramService {
 
   /**
    * Reply publicly to a comment on Instagram.
+   * Throws an error if the Graph API returns an error response.
    */
   async replyToComment(
     commentId: string,
     message: string,
     accessToken: string
   ): Promise<unknown> {
+    console.log(`[replyToComment] Replying to comment ${commentId}`);
     const res = await fetch(
-      `${GRAPH_API_BASE}/${commentId}/replies?message=${encodeURIComponent(message)}&access_token=${accessToken}`,
-      { method: "POST" }
+      `${GRAPH_API_BASE}/${commentId}/replies`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, access_token: accessToken }),
+      }
     );
-    return res.json();
+    const data = (await res.json()) as { error?: { message: string; code: number } };
+    console.log(`[replyToComment] Response:`, JSON.stringify(data));
+    if (data.error) {
+      throw new Error(`Graph API error (${data.error.code}): ${data.error.message}`);
+    }
+    return data;
   }
 
   /**
-   * Send a private DM via the page's messaging endpoint.
+   * Send a private DM via the Instagram User Messaging endpoint.
+   * Uses instagramUserId (not pageId) — required for direct Instagram OAuth.
+   * Throws an error if the Graph API returns an error response.
    */
   async sendPrivateDM(
-    pageId: string,
+    igUserId: string,
     commentId: string,
     message: string,
     accessToken: string
   ): Promise<unknown> {
+    console.log(`[sendPrivateDM] Sending DM to commenter of comment ${commentId} via IG user ${igUserId}`);
     const res = await fetch(
-      `${GRAPH_API_BASE}/${pageId}/messages?access_token=${accessToken}`,
+      `${GRAPH_API_BASE}/${igUserId}/messages`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           recipient: { comment_id: commentId },
           message: { text: message },
+          access_token: accessToken,
         }),
       }
     );
-    return res.json();
+    const data = (await res.json()) as { error?: { message: string; code: number } };
+    console.log(`[sendPrivateDM] Response:`, JSON.stringify(data));
+    if (data.error) {
+      throw new Error(`Graph API error (${data.error.code}): ${data.error.message}`);
+    }
+    return data;
   }
 
   /**

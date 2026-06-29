@@ -8,8 +8,6 @@ import ExecutionLog from "../../models/ExecutionLog";
 const instagramRoutes = Router();
 const instagramService = new InstagramService();
 
-// ─── Protected routes ─────────────────────────────────────────────────────
-
 /**
  * GET /auth — Return the Facebook OAuth URL.
  */
@@ -52,9 +50,9 @@ instagramRoutes.get("/callback", async (req: Request, res: Response) => {
 });
 
 /**
- * POST /disconnect — Disconnect the user's Instagram account.
+ * DELETE /disconnect — Disconnect the user's Instagram account.
  */
-instagramRoutes.post("/disconnect", authMiddleware, async (req: Request, res: Response) => {
+instagramRoutes.delete("/disconnect", authMiddleware, async (req: Request, res: Response) => {
   try {
     await instagramService.disconnect(req.user!.userId);
     return res.status(200).json({ success: true, message: "Instagram disconnected" });
@@ -72,7 +70,20 @@ instagramRoutes.post("/disconnect", authMiddleware, async (req: Request, res: Re
 instagramRoutes.get("/reels", authMiddleware, async (req: Request, res: Response) => {
   try {
     const reels = await instagramService.fetchAndSyncReels(req.user!.userId);
-    return res.status(200).json({ success: true, data: { reels } });
+
+    // Map MongoDB camelCase fields → snake_case shape expected by the client
+    const mapped = reels.map((r: any) => ({
+      id: r.reelId ?? r._id?.toString(),
+      caption: r.caption,
+      thumbnail_url: r.thumbnailUrl,
+      media_url: r.mediaUrl,
+      like_count: r.likesCount ?? 0,
+      comments_count: r.commentsCount ?? 0,
+      permalink: r.permalink,
+      timestamp: r.createdAt,
+    }));
+
+    return res.status(200).json({ success: true, data: mapped });
   } catch (error) {
     return res.status(500).json({
       success: false,
@@ -94,7 +105,7 @@ instagramRoutes.get("/webhook", (req: Request, res: Response) => {
   console.log("--- Webhook Verification Request ---");
   console.log("Received mode:", mode);
   console.log("Received token:", token);
-  console.log("Expected token in process.env:", process.env.FACEBOOK_WEBHOOK_VERIFY_TOKEN);
+  console.log("Expected token:", process.env.FACEBOOK_WEBHOOK_VERIFY_TOKEN);
 
   if (mode === "subscribe" && token === process.env.FACEBOOK_WEBHOOK_VERIFY_TOKEN) {
     console.log("Verification SUCCESS");
@@ -106,7 +117,7 @@ instagramRoutes.get("/webhook", (req: Request, res: Response) => {
 });
 
 /**
- * POST /webhook — Receive incoming webhook events from Facebook.
+ * POST /webhook — Receive incoming webhook events from Facebook / Instagram.
  */
 instagramRoutes.post("/webhook", async (req: Request, res: Response) => {
   try {
@@ -141,11 +152,17 @@ instagramRoutes.post("/webhook", async (req: Request, res: Response) => {
           message = val.message;
           media_id = val.media_id || val.post_id;
         } else {
+          console.log(`[webhook] Skipping unhandled field: ${change.field}`);
           continue;
         }
 
-        // Find automations that match this media_id or have a keyword match
+        console.log(
+          `[webhook] Comment event — comment_id: ${comment_id}, media_id: ${media_id}, message: "${message}", from: @${commenterUsername}`
+        );
+
+        // Find all enabled automations
         const automations = await Automation.find({ enabled: true });
+        console.log(`[webhook] Found ${automations.length} enabled automation(s)`);
 
         for (const automation of automations) {
           const reelMatch = automation.reelId === media_id;
@@ -154,34 +171,49 @@ instagramRoutes.post("/webhook", async (req: Request, res: Response) => {
               message?.toLowerCase().includes(kw.toLowerCase())
             ) ?? false;
 
-          if (!reelMatch && !keywordMatch) continue;
+          console.log(
+            `[webhook] Automation ${automation._id}: reelMatch=${reelMatch}, keywordMatch=${keywordMatch} (keywords: [${automation.keywords?.join(", ")}])`
+          );
+
+          if (!reelMatch && !keywordMatch) {
+            console.log(`[webhook] Automation ${automation._id} skipped — no match`);
+            continue;
+          }
 
           // Look up the Instagram account for this automation
-          const igAccount = await InstagramAccount.findById(
-            automation.instagramAccountId
-          );
-          if (!igAccount?.accessToken) continue;
+          const igAccount = await InstagramAccount.findById(automation.instagramAccountId);
+          if (!igAccount?.accessToken) {
+            console.log(`[webhook] Automation ${automation._id} skipped — no IG account or access token`);
+            continue;
+          }
 
-          // Reply to comment
+          console.log(`[webhook] Automation ${automation._id} matched! IG user: ${igAccount.instagramUserId}`);
+
+          // ── Reply to comment ──────────────────────────────────────
           let commentReplyStatus: "SUCCESS" | "FAILED" = "SUCCESS";
           let commentReplyError = "";
           try {
             if (automation.commentReply) {
+              console.log(`[webhook] Replying to comment with: "${automation.commentReply}"`);
               await instagramService.replyToComment(
                 comment_id,
                 automation.commentReply,
                 igAccount.accessToken
               );
+              console.log(`[webhook] Comment reply sent successfully`);
+            } else {
+              console.log(`[webhook] No commentReply configured — skipping`);
             }
           } catch (err) {
             commentReplyStatus = "FAILED";
             commentReplyError = err instanceof Error ? err.message : "Unknown error";
+            console.error(`[webhook] Comment reply FAILED:`, commentReplyError);
           }
 
           await ExecutionLog.create({
             automationId: automation._id,
             commenterId: sender_id,
-            commenterUsername: commenterUsername,
+            commenterUsername,
             commentId: comment_id,
             commentText: message,
             action: "COMMENT_REPLY",
@@ -189,27 +221,37 @@ instagramRoutes.post("/webhook", async (req: Request, res: Response) => {
             errorMessage: commentReplyError || undefined,
           });
 
-          // Send DM
+          // ── Send DM ───────────────────────────────────────────────
           let dmStatus: "SUCCESS" | "FAILED" = "SUCCESS";
           let dmError = "";
           try {
-            if (automation.dmMessage && igAccount.pageId) {
+            if (automation.dmMessage) {
+              // Use instagramUserId — required for direct Instagram OAuth (no Facebook Page)
+              const igUserId = igAccount.instagramUserId;
+              if (!igUserId) {
+                throw new Error("No instagramUserId on account record — reconnect Instagram");
+              }
+              console.log(`[webhook] Sending DM via IG user ${igUserId}: "${automation.dmMessage}"`);
               await instagramService.sendPrivateDM(
-                igAccount.pageId,
+                igUserId,
                 comment_id,
                 automation.dmMessage,
                 igAccount.accessToken
               );
+              console.log(`[webhook] DM sent successfully`);
+            } else {
+              console.log(`[webhook] No dmMessage configured — skipping`);
             }
           } catch (err) {
             dmStatus = "FAILED";
             dmError = err instanceof Error ? err.message : "Unknown error";
+            console.error(`[webhook] DM FAILED:`, dmError);
           }
 
           await ExecutionLog.create({
             automationId: automation._id,
             commenterId: sender_id,
-            commenterUsername: commenterUsername,
+            commenterUsername,
             commentId: comment_id,
             commentText: message,
             action: "SEND_DM",
@@ -220,10 +262,10 @@ instagramRoutes.post("/webhook", async (req: Request, res: Response) => {
       }
     }
   } catch (error) {
-    console.error("Webhook processing error:", error);
+    console.error("[webhook] Unhandled processing error:", error);
   }
 
-  // Always respond 200 to webhooks
+  // Always respond 200 to webhooks — Meta requires this
   return res.sendStatus(200);
 });
 
