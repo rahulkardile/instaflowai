@@ -10,10 +10,19 @@ const AutomationSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "InstagramAccount",
     },
-    reelId: String,
+    type: {
+      type: String,
+      enum: ["COMMENT", "DM"],
+      default: "COMMENT",
+    },
+    reelId: {
+      type: String,
+      default: null,
+    },
     keywords: [String],
     commentReply: String,
     dmMessage: String,
+    dmReplyMessage: String,
     enabled: {
       type: Boolean,
       default: true,

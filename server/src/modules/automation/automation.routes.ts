@@ -10,18 +10,30 @@ const automationRoutes = Router();
 automationRoutes.use(authMiddleware);
 
 const createAutomationSchema = z.object({
-  reelId: z.string().min(1, "reelId is required"),
+  type: z.enum(["COMMENT", "DM"]).default("COMMENT"),
+  reelId: z.string().min(1, "reelId is required").optional(),
   keywords: z.array(z.string()).default([]),
   commentReply: z.string().optional(),
   dmMessage: z.string().optional(),
+  dmReplyMessage: z.string().optional(),
   active: z.boolean().optional().default(true),
-});
+}).refine(
+  (data) => {
+    if (data.type === "COMMENT" && !data.reelId) {
+      return false;
+    }
+    return true;
+  },
+  { message: "reelId is required for COMMENT automations", path: ["reelId"] }
+);
 
 const updateAutomationSchema = z.object({
+  type: z.enum(["COMMENT", "DM"]).optional(),
   reelId: z.string().min(1).optional(),
   keywords: z.array(z.string()).optional(),
   commentReply: z.string().optional(),
   dmMessage: z.string().optional(),
+  dmReplyMessage: z.string().optional(),
   enabled: z.boolean().optional(),
 });
 
@@ -68,10 +80,12 @@ automationRoutes.post("/", async (req: Request, res: Response) => {
     const automation = await Automation.create({
       userId: req.user!.userId,
       instagramAccountId: igAccount._id,
-      reelId: parsed.data.reelId,
+      type: parsed.data.type,
+      reelId: parsed.data.reelId || null,
       keywords: parsed.data.keywords,
       commentReply: parsed.data.commentReply,
       dmMessage: parsed.data.dmMessage,
+      dmReplyMessage: parsed.data.dmReplyMessage,
       enabled: parsed.data.active ?? true,
     });
 
@@ -151,11 +165,16 @@ automationRoutes.delete("/:id", async (req: Request, res: Response) => {
  */
 automationRoutes.get("/logs", async (req: Request, res: Response) => {
   try {
-    // Find all automation IDs owned by this user
+    // Find all automation IDs owned by this user for backward compatibility
     const userAutomations = await Automation.find({ userId: req.user!.userId }).select("_id");
     const automationIds = userAutomations.map((a) => a._id);
 
-    const logs = await ExecutionLog.find({ automationId: { $in: automationIds } })
+    const logs = await ExecutionLog.find({
+      $or: [
+        { userId: req.user!.userId },
+        { automationId: { $in: automationIds } },
+      ],
+    })
       .sort({ createdAt: -1 })
       .limit(100)
       .populate("automationId");

@@ -28,6 +28,8 @@ import {
   Settings2,
   Plus,
   Hash,
+  Mail,
+  Inbox,
 } from "lucide-react";
 import Header from "../components/layout/Header";
 import { auth } from "../utils/auth";
@@ -51,10 +53,12 @@ interface Reel {
 
 interface Automation {
   _id: string;
+  type: "COMMENT" | "DM";
   reelId: string;
   keywords: string[];
   commentReply?: string;
   dmMessage?: string;
+  dmReplyMessage?: string;
   enabled: boolean;
   createdAt: string;
 }
@@ -66,13 +70,22 @@ interface AutomationForm {
   active: boolean;
 }
 
+interface DMAutomationForm {
+  keywords: string;
+  dmReplyMessage: string;
+  active: boolean;
+}
+
 interface LogEntry {
   _id: string;
   commenterUsername?: string;
   commentText?: string;
-  action: "COMMENT_REPLY" | "SEND_DM";
+  dmSenderId?: string;
+  dmText?: string;
+  action: "COMMENT_REPLY" | "SEND_DM" | "DM_AUTO_REPLY" | "COMMENT_RECEIVED" | "DM_RECEIVED";
   status: "SUCCESS" | "FAILED";
   error?: string;
+  errorMessage?: string;
   createdAt: string;
 }
 
@@ -151,7 +164,7 @@ function SkeletonReelCard() {
 /*  Dashboard                                                           */
 /* ------------------------------------------------------------------ */
 
-type Tab = "reels" | "automations" | "logs";
+type Tab = "reels" | "automations" | "dm-automations" | "logs" | "inbox";
 
 export default function Dashboard() {
   const session = auth.get();
@@ -160,8 +173,11 @@ export default function Dashboard() {
 
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [selectedReel, setSelectedReel] = useState<Reel | null>(null);
+  const [showDMModal, setShowDMModal] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("reels");
   const [logLimit, setLogLimit] = useState(50);
+  const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
+  const [messageInput, setMessageInput] = useState("");
 
   if (!session) {
     return <Navigate to="/login" replace />;
@@ -211,6 +227,9 @@ export default function Dashboard() {
     },
   });
 
+  const commentAutomations = automations.filter((a) => a.type === "COMMENT" || !a.type);
+  const dmAutomations = automations.filter((a) => a.type === "DM");
+
   const { data: logs = [], isLoading: loadingLogs } = useQuery<LogEntry[]>({
     queryKey: ["automation-logs"],
     queryFn: async () => {
@@ -228,7 +247,7 @@ export default function Dashboard() {
     );
   }).length;
 
-  const dmsSent = logs.filter((l) => l.action === "SEND_DM").length;
+  const dmsSent = logs.filter((l) => l.action === "SEND_DM" || l.action === "DM_AUTO_REPLY").length;
 
   const { data: reels = [], isLoading: loadingReels } = useQuery<Reel[]>({
     queryKey: ["reels"],
@@ -237,6 +256,47 @@ export default function Dashboard() {
       return Array.isArray(data?.data) ? data.data : [];
     },
     enabled: user.instagramConnected,
+  });
+
+  const { data: igAccount, isLoading: loadingIgAccount } = useQuery({
+    queryKey: ["igAccount"],
+    queryFn: async () => {
+      const { data } = await api.get("/instagram/account");
+      return data?.data;
+    },
+    enabled: user.instagramConnected,
+  });
+
+  const { data: conversations = [], isLoading: loadingConversations } = useQuery<LogEntry[]>({
+    queryKey: ["conversations"],
+    queryFn: async () => {
+      const { data } = await api.get("/instagram/conversations");
+      return Array.isArray(data?.data) ? data.data : [];
+    },
+    enabled: user.instagramConnected,
+    refetchInterval: 5000,
+  });
+
+  const sendMessageMutation = useMutation({
+    mutationFn: (payload: { recipientId: string; text: string }) => api.post("/instagram/message", payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      setMessageInput("");
+    },
+    onError: () => pushToast("Failed to send message", "error"),
+  });
+
+  const groupedConversations = conversations.reduce((acc, log) => {
+    if (!log.dmSenderId) return acc;
+    if (!acc[log.dmSenderId]) acc[log.dmSenderId] = [];
+    acc[log.dmSenderId].push(log);
+    return acc;
+  }, {} as Record<string, LogEntry[]>);
+
+  const conversationSenders = Object.keys(groupedConversations).sort((a, b) => {
+    const lastA = groupedConversations[a][groupedConversations[a].length - 1].createdAt;
+    const lastB = groupedConversations[b][groupedConversations[b].length - 1].createdAt;
+    return new Date(lastB).getTime() - new Date(lastA).getTime();
   });
 
   const connectIG = async () => {
@@ -266,15 +326,18 @@ export default function Dashboard() {
 
   const createAutomationMutation = useMutation({
     mutationFn: (payload: {
-      reelId: string;
+      type: "COMMENT" | "DM";
+      reelId?: string;
       keywords: string[];
-      commentReply: string;
-      dmMessage: string;
+      commentReply?: string;
+      dmMessage?: string;
+      dmReplyMessage?: string;
       active: boolean;
     }) => api.post("/automations", payload),
     onSuccess: () => {
       pushToast("Automation saved!", "success");
       setSelectedReel(null);
+      setShowDMModal(false);
       queryClient.invalidateQueries({ queryKey: ["automations"] });
     },
     onError: () => pushToast("Failed to save automation", "error"),
@@ -302,7 +365,9 @@ export default function Dashboard() {
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode; count?: number }[] = [
     { id: "reels", label: "Reels", icon: <Film size={16} />, count: reels.length },
-    { id: "automations", label: "Automations", icon: <Zap size={16} />, count: automations.length },
+    { id: "automations", label: "Comment Automations", icon: <MessageCircle size={16} />, count: commentAutomations.length },
+    { id: "dm-automations", label: "DM Automations", icon: <Mail size={16} />, count: dmAutomations.length },
+    { id: "inbox", label: "Inbox", icon: <Inbox size={16} />, count: conversationSenders.length },
     { id: "logs", label: "Activity Log", icon: <Activity size={16} />, count: logs.length },
   ];
 
@@ -355,21 +420,21 @@ export default function Dashboard() {
                   accent={user.instagramConnected ? "green" : "red"}
                 />
                 <StatCard
-                  icon={<Zap size={20} />}
-                  label="Active Automations"
-                  value={String(automations.filter((a) => a.enabled).length)}
+                  icon={<MessageCircle size={20} />}
+                  label="Comment Automations"
+                  value={String(commentAutomations.filter((a) => a.enabled).length)}
                   accent="purple"
                 />
                 <StatCard
-                  icon={<MessageCircle size={20} />}
-                  label="Replies Today"
-                  value={String(repliesToday)}
+                  icon={<Mail size={20} />}
+                  label="DM Automations"
+                  value={String(dmAutomations.filter((a) => a.enabled).length)}
                   accent="blue"
                 />
                 <StatCard
                   icon={<Send size={20} />}
-                  label="DMs Sent"
-                  value={String(dmsSent)}
+                  label="Total Actions"
+                  value={String(logs.length)}
                   accent="pink"
                 />
               </>
@@ -411,10 +476,14 @@ export default function Dashboard() {
                     <Camera size={24} />
                   </div>
                   <div>
-                    <p className="text-lg font-bold text-slate-900">Instagram Connected</p>
+                    <p className="text-lg font-bold text-slate-900">
+                      {igAccount ? `@${igAccount.username}` : "Instagram Connected"}
+                    </p>
                     <div className="mt-1 flex items-center gap-2">
                       <span className="inline-block h-2.5 w-2.5 rounded-full bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.6)]" />
-                      <span className="text-sm font-medium text-green-700">Account linked & active</span>
+                      <span className="text-sm font-medium text-green-700">
+                        {igAccount ? `ID: ${igAccount.instagramUserId}` : "Account linked & active"}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -438,13 +507,13 @@ export default function Dashboard() {
           {user.instagramConnected && (
             <section className="mt-10">
               {/* Tab Bar */}
-              <div className="flex gap-1 rounded-2xl border border-slate-200/60 bg-white/70 p-1.5 shadow-sm backdrop-blur-xl">
+              <div className="flex gap-1 rounded-2xl border border-slate-200/60 bg-white/70 p-1.5 shadow-sm backdrop-blur-xl overflow-x-auto">
                 {tabs.map((tab) => (
                   <button
                     key={tab.id}
                     id={`tab-${tab.id}`}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold transition-all duration-200 ${
+                    className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 whitespace-nowrap ${
                       activeTab === tab.id
                         ? "bg-gradient-to-r from-purple-600 to-pink-500 text-white shadow-md"
                         : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
@@ -504,7 +573,7 @@ export default function Dashboard() {
                         <ReelCard
                           key={reel.id}
                           reel={reel}
-                          hasAutomation={automations.some((a) => a.reelId === reel.id)}
+                          hasAutomation={commentAutomations.some((a) => a.reelId === reel.id)}
                           onAutomate={() => setSelectedReel(reel)}
                         />
                       ))}
@@ -513,14 +582,14 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* Tab: Automations */}
+              {/* Tab: Comment Automations */}
               {activeTab === "automations" && (
                 <div className="mt-8">
                   <div className="mb-6 flex items-center justify-between">
                     <div>
-                      <h2 className="text-2xl font-bold text-slate-900">Your Automations</h2>
+                      <h2 className="text-2xl font-bold text-slate-900">Comment Automations</h2>
                       <p className="mt-1 text-sm text-slate-500">
-                        Manage keyword triggers, comment replies, and DM messages.
+                        Manage keyword triggers, comment replies, and DM messages for your reels.
                       </p>
                     </div>
                     <button
@@ -536,10 +605,10 @@ export default function Dashboard() {
                     <div className="flex justify-center py-20">
                       <Loader2 size={32} className="animate-spin text-purple-500" />
                     </div>
-                  ) : automations.length === 0 ? (
+                  ) : commentAutomations.length === 0 ? (
                     <div className="rounded-3xl border border-white/20 bg-white/70 py-24 text-center shadow-lg backdrop-blur-xl">
-                      <Zap size={52} className="mx-auto text-slate-300" />
-                      <p className="mt-5 text-xl font-semibold text-slate-500">No automations yet</p>
+                      <MessageCircle size={52} className="mx-auto text-slate-300" />
+                      <p className="mt-5 text-xl font-semibold text-slate-500">No comment automations yet</p>
                       <p className="mt-2 text-sm text-slate-400">
                         Go to the Reels tab and click <strong>Automate</strong> on a reel to create one.
                       </p>
@@ -553,7 +622,7 @@ export default function Dashboard() {
                     </div>
                   ) : (
                     <div className="flex flex-col gap-4">
-                      {automations.map((automation) => {
+                      {commentAutomations.map((automation) => {
                         const matchedReel = reels.find((r) => r.id === automation.reelId);
                         return (
                           <AutomationCard
@@ -568,6 +637,63 @@ export default function Dashboard() {
                           />
                         );
                       })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Tab: DM Automations */}
+              {activeTab === "dm-automations" && (
+                <div className="mt-8">
+                  <div className="mb-6 flex items-center justify-between">
+                    <div>
+                      <h2 className="text-2xl font-bold text-slate-900">DM Automations</h2>
+                      <p className="mt-1 text-sm text-slate-500">
+                        Set up keyword-triggered auto-replies for incoming direct messages.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setShowDMModal(true)}
+                      className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-500 px-5 py-2.5 text-sm font-semibold text-white shadow-md transition hover:scale-[1.03] hover:shadow-lg"
+                    >
+                      <Plus size={16} />
+                      New DM Automation
+                    </button>
+                  </div>
+
+                  {loadingAutomations ? (
+                    <div className="flex justify-center py-20">
+                      <Loader2 size={32} className="animate-spin text-violet-500" />
+                    </div>
+                  ) : dmAutomations.length === 0 ? (
+                    <div className="rounded-3xl border border-white/20 bg-white/70 py-24 text-center shadow-lg backdrop-blur-xl">
+                      <Inbox size={52} className="mx-auto text-slate-300" />
+                      <p className="mt-5 text-xl font-semibold text-slate-500">No DM automations yet</p>
+                      <p className="mt-2 text-sm text-slate-400">
+                        Create a DM automation to auto-reply when someone sends you a direct message
+                        containing specific keywords.
+                      </p>
+                      <button
+                        onClick={() => setShowDMModal(true)}
+                        className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-500 px-6 py-3 text-sm font-semibold text-white shadow-md transition hover:scale-[1.03]"
+                      >
+                        <Mail size={16} />
+                        Create DM Automation
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-4">
+                      {dmAutomations.map((automation) => (
+                        <DMAutomationCard
+                          key={automation._id}
+                          automation={automation}
+                          onToggle={(enabled) =>
+                            toggleAutomationMutation.mutate({ id: automation._id, enabled })
+                          }
+                          onDelete={() => deleteAutomationMutation.mutate(automation._id)}
+                          isDeleting={deleteAutomationMutation.isPending}
+                        />
+                      ))}
                     </div>
                   )}
                 </div>
@@ -609,8 +735,8 @@ export default function Dashboard() {
                             <thead>
                               <tr className="border-b border-slate-200/60 bg-slate-50/80">
                                 <th className="px-6 py-4 font-semibold text-slate-600">Time</th>
-                                <th className="px-6 py-4 font-semibold text-slate-600">Commenter</th>
-                                <th className="px-6 py-4 font-semibold text-slate-600">Comment</th>
+                                <th className="px-6 py-4 font-semibold text-slate-600">From</th>
+                                <th className="px-6 py-4 font-semibold text-slate-600">Message</th>
                                 <th className="px-6 py-4 font-semibold text-slate-600">Action</th>
                                 <th className="px-6 py-4 font-semibold text-slate-600">Status</th>
                                 <th className="px-6 py-4 font-semibold text-slate-600">Error</th>
@@ -631,25 +757,41 @@ export default function Dashboard() {
                                     </div>
                                   </td>
                                   <td className="px-6 py-4 font-medium text-slate-800">
-                                    {log.commenterUsername || "—"}
+                                    {log.commenterUsername || log.dmSenderId || "—"}
                                   </td>
                                   <td className="max-w-[200px] truncate px-6 py-4 text-slate-600">
-                                    {log.commentText || "—"}
+                                    {log.commentText || log.dmText || "—"}
                                   </td>
                                   <td className="px-6 py-4">
                                     <span
                                       className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
                                         log.action === "COMMENT_REPLY"
                                           ? "bg-blue-100 text-blue-700"
+                                          : log.action === "DM_AUTO_REPLY"
+                                          ? "bg-indigo-100 text-indigo-700"
+                                          : log.action === "COMMENT_RECEIVED" || log.action === "DM_RECEIVED"
+                                          ? "bg-slate-100 text-slate-700"
                                           : "bg-violet-100 text-violet-700"
                                       }`}
                                     >
                                       {log.action === "COMMENT_REPLY" ? (
                                         <MessageCircle size={12} />
+                                      ) : log.action === "DM_AUTO_REPLY" ? (
+                                        <Mail size={12} />
+                                      ) : log.action === "COMMENT_RECEIVED" || log.action === "DM_RECEIVED" ? (
+                                        <Inbox size={12} />
                                       ) : (
                                         <Send size={12} />
                                       )}
-                                      {log.action === "COMMENT_REPLY" ? "Reply" : "DM"}
+                                      {log.action === "COMMENT_REPLY"
+                                        ? "Reply"
+                                        : log.action === "DM_AUTO_REPLY"
+                                        ? "DM Auto-Reply"
+                                        : log.action === "COMMENT_RECEIVED"
+                                        ? "Comment Received"
+                                        : log.action === "DM_RECEIVED"
+                                        ? "DM Received"
+                                        : "DM"}
                                     </span>
                                   </td>
                                   <td className="px-6 py-4">
@@ -669,7 +811,7 @@ export default function Dashboard() {
                                     </span>
                                   </td>
                                   <td className="max-w-[160px] truncate px-6 py-4 text-xs text-red-500">
-                                    {log.error || "—"}
+                                    {log.errorMessage || log.error || "—"}
                                   </td>
                                 </tr>
                               ))}
@@ -692,6 +834,131 @@ export default function Dashboard() {
                   </div>
                 </div>
               )}
+
+              {/* Tab: Inbox */}
+              {activeTab === "inbox" && (
+                <div className="mt-8">
+                  <div className="mb-6 flex items-center justify-between">
+                    <div>
+                      <h2 className="text-2xl font-bold text-slate-900">Inbox</h2>
+                      <p className="mt-1 text-sm text-slate-500">
+                        View and reply to direct messages.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex h-[600px] overflow-hidden rounded-3xl border border-white/20 bg-white/70 shadow-lg backdrop-blur-xl">
+                    {/* Sidebar */}
+                    <div className="w-1/3 border-r border-slate-200/60 bg-slate-50/50 flex flex-col">
+                      <div className="p-4 border-b border-slate-200/60">
+                        <h3 className="font-semibold text-slate-800">Conversations</h3>
+                      </div>
+                      <div className="flex-1 overflow-y-auto">
+                        {loadingConversations ? (
+                          <div className="flex justify-center p-8">
+                            <Loader2 size={24} className="animate-spin text-purple-500" />
+                          </div>
+                        ) : conversationSenders.length === 0 ? (
+                          <div className="p-8 text-center text-sm text-slate-500">
+                            No conversations yet.
+                          </div>
+                        ) : (
+                          conversationSenders.map((senderId) => {
+                            const lastMessage = groupedConversations[senderId][groupedConversations[senderId].length - 1];
+                            const isSelected = selectedConversation === senderId;
+                            return (
+                              <button
+                                key={senderId}
+                                onClick={() => setSelectedConversation(senderId)}
+                                className={`w-full text-left p-4 border-b border-slate-100 transition hover:bg-white ${
+                                  isSelected ? "bg-white border-l-4 border-l-purple-500" : ""
+                                }`}
+                              >
+                                <p className="font-semibold text-slate-800 text-sm truncate">
+                                  {senderId}
+                                </p>
+                                <p className="text-xs text-slate-500 truncate mt-1">
+                                  {lastMessage.dmText}
+                                </p>
+                              </button>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Chat Window */}
+                    <div className="flex-1 flex flex-col bg-white">
+                      {selectedConversation ? (
+                        <>
+                          <div className="p-4 border-b border-slate-200/60 shadow-sm z-10 flex items-center justify-between bg-white/90 backdrop-blur">
+                            <h3 className="font-semibold text-slate-800">
+                              Chat with {selectedConversation}
+                            </h3>
+                          </div>
+                          
+                          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
+                            {groupedConversations[selectedConversation].map((log) => {
+                              const isOutgoing = log.action === "SEND_DM" || log.action === "DM_AUTO_REPLY";
+                              return (
+                                <div key={log._id} className={`flex flex-col ${isOutgoing ? "items-end" : "items-start"}`}>
+                                  <div
+                                    className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${
+                                      isOutgoing
+                                        ? "bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-br-none"
+                                        : "bg-slate-100 text-slate-800 rounded-bl-none"
+                                    }`}
+                                  >
+                                    {log.dmText}
+                                  </div>
+                                  <span className="text-[10px] text-slate-400 mt-1 px-1">
+                                    {new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    {log.action === "DM_AUTO_REPLY" && " • Auto-Reply"}
+                                    {log.status === "FAILED" && <span className="text-red-500 ml-1">• Failed</span>}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          <div className="p-4 border-t border-slate-200/60 bg-slate-50/50">
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                value={messageInput}
+                                onChange={(e) => setMessageInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" && messageInput.trim()) {
+                                    sendMessageMutation.mutate({ recipientId: selectedConversation, text: messageInput });
+                                  }
+                                }}
+                                placeholder="Type a message..."
+                                className="flex-1 rounded-full border border-slate-300 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-purple-400 focus:ring-2 focus:ring-purple-100"
+                              />
+                              <button
+                                onClick={() => {
+                                  if (messageInput.trim()) {
+                                    sendMessageMutation.mutate({ recipientId: selectedConversation, text: messageInput });
+                                  }
+                                }}
+                                disabled={sendMessageMutation.isPending || !messageInput.trim()}
+                                className="flex h-10 w-10 items-center justify-center rounded-full bg-purple-600 text-white transition hover:bg-purple-700 disabled:opacity-50"
+                              >
+                                {sendMessageMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} className="ml-1" />}
+                              </button>
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
+                          <MessageSquare size={48} className="mb-4 opacity-50" />
+                          <p>Select a conversation to start chatting</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </section>
           )}
 
@@ -711,17 +978,34 @@ export default function Dashboard() {
         </div>
       </main>
 
-      {/* Automation Modal */}
+      {/* Comment Automation Modal */}
       {selectedReel && (
         <AutomationModal
           reel={selectedReel}
           onClose={() => setSelectedReel(null)}
           onSave={(data) =>
             createAutomationMutation.mutate({
+              type: "COMMENT",
               reelId: selectedReel.id,
               keywords: data.keywords.split(",").map((k) => k.trim()).filter(Boolean),
               commentReply: data.commentReply,
               dmMessage: data.dmMessage,
+              active: data.active,
+            })
+          }
+          isSaving={createAutomationMutation.isPending}
+        />
+      )}
+
+      {/* DM Automation Modal */}
+      {showDMModal && (
+        <DMAutomationModal
+          onClose={() => setShowDMModal(false)}
+          onSave={(data) =>
+            createAutomationMutation.mutate({
+              type: "DM",
+              keywords: data.keywords.split(",").map((k) => k.trim()).filter(Boolean),
+              dmReplyMessage: data.dmReplyMessage,
               active: data.active,
             })
           }
@@ -878,7 +1162,7 @@ function ReelCard({
   );
 }
 
-/* ── Automation Card ── */
+/* ── Automation Card (Comment type) ── */
 
 function AutomationCard({
   automation,
@@ -913,7 +1197,7 @@ function AutomationCard({
             <p className="truncate text-sm font-semibold text-slate-800">
               {reel?.caption
                 ? reel.caption.slice(0, 70) + (reel.caption.length > 70 ? "…" : "")
-                : `Reel ID: ${automation.reelId.slice(0, 12)}…`}
+                : `Reel ID: ${automation.reelId?.slice(0, 12)}…`}
             </p>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {automation.keywords.length > 0 ? (
@@ -927,7 +1211,7 @@ function AutomationCard({
                   </span>
                 ))
               ) : (
-                <span className="text-xs text-slate-400">No keywords</span>
+                <span className="text-xs text-slate-400">No keywords (matches all comments)</span>
               )}
               {automation.keywords.length > 5 && (
                 <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-500">
@@ -980,7 +1264,87 @@ function AutomationCard({
   );
 }
 
-/* ── Automation Modal ── */
+/* ── DM Automation Card ── */
+
+function DMAutomationCard({
+  automation,
+  onToggle,
+  onDelete,
+  isDeleting,
+}: {
+  automation: Automation;
+  onToggle: (enabled: boolean) => void;
+  onDelete: () => void;
+  isDeleting: boolean;
+}) {
+  return (
+    <div className="flex items-start gap-5 rounded-2xl border border-white/20 bg-white/70 p-5 shadow-lg backdrop-blur-xl transition hover:shadow-xl">
+      <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-100 to-indigo-100">
+        <Mail size={24} className="text-violet-500" />
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-slate-800">DM Auto-Reply</p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {automation.keywords.length > 0 ? (
+                automation.keywords.slice(0, 5).map((kw, i) => (
+                  <span
+                    key={i}
+                    className="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-700"
+                  >
+                    <Hash size={9} />
+                    {kw}
+                  </span>
+                ))
+              ) : (
+                <span className="text-xs text-slate-400">No keywords (matches all DMs)</span>
+              )}
+              {automation.keywords.length > 5 && (
+                <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-500">
+                  +{automation.keywords.length - 5}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              id={`toggle-dm-automation-${automation._id}`}
+              onClick={() => onToggle(!automation.enabled)}
+              className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
+                automation.enabled
+                  ? "bg-green-100 text-green-700 hover:bg-green-200"
+                  : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+              }`}
+            >
+              {automation.enabled ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
+              {automation.enabled ? "Enabled" : "Disabled"}
+            </button>
+            <button
+              id={`delete-dm-automation-${automation._id}`}
+              onClick={onDelete}
+              disabled={isDeleting}
+              className="rounded-xl p-2 text-slate-400 transition hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
+            >
+              {isDeleting ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+            </button>
+          </div>
+        </div>
+
+        {automation.dmReplyMessage && (
+          <div className="mt-3 flex items-start gap-2 rounded-xl bg-indigo-50/70 px-3 py-2">
+            <Send size={12} className="mt-0.5 flex-shrink-0 text-indigo-500" />
+            <p className="text-xs text-indigo-700">{automation.dmReplyMessage}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Comment Automation Modal ── */
 
 function AutomationModal({
   reel,
@@ -1027,7 +1391,7 @@ function AutomationModal({
               <Settings2 size={18} className="text-white" />
             </div>
             <div>
-              <h3 className="text-xl font-bold text-slate-900">Set Up Automation</h3>
+              <h3 className="text-xl font-bold text-slate-900">Comment Automation</h3>
               <p className="text-xs text-slate-500">Configure auto-replies and DMs for this reel.</p>
             </div>
           </div>
@@ -1117,6 +1481,7 @@ function AutomationModal({
               <label className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700">
                 <Send size={14} className="text-violet-500" />
                 DM Message
+                <span className="font-normal text-slate-400">(private reply to commenter)</span>
               </label>
               <textarea
                 id="dm-message-input"
@@ -1143,6 +1508,159 @@ function AutomationModal({
               >
                 {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
                 {isSaving ? "Saving…" : "Save Automation"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── DM Automation Modal ── */
+
+function DMAutomationModal({
+  onClose,
+  onSave,
+  isSaving,
+}: {
+  onClose: () => void;
+  onSave: (data: DMAutomationForm) => void;
+  isSaving: boolean;
+}) {
+  const { register, handleSubmit, watch, setValue } = useForm<DMAutomationForm>({
+    defaultValues: { keywords: "", dmReplyMessage: "", active: true },
+  });
+
+  const active = watch("active");
+  const keywordsRaw = watch("keywords");
+  const keywordTags = keywordsRaw.split(",").map((k) => k.trim()).filter(Boolean);
+
+  const removeKeyword = (idx: number) => {
+    setValue("keywords", keywordTags.filter((_, i) => i !== idx).join(", "));
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="relative max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-white/20 bg-white shadow-2xl">
+        <button
+          id="close-dm-automation-modal"
+          onClick={onClose}
+          className="absolute right-4 top-4 rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+        >
+          <X size={20} />
+        </button>
+
+        <div className="p-8">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-500">
+              <Mail size={18} className="text-white" />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-slate-900">DM Automation</h3>
+              <p className="text-xs text-slate-500">Auto-reply to incoming direct messages with keyword triggers.</p>
+            </div>
+          </div>
+
+          {/* Info banner */}
+          <div className="mt-5 flex items-start gap-3 rounded-2xl bg-indigo-50 p-4">
+            <Inbox size={20} className="mt-0.5 flex-shrink-0 text-indigo-500" />
+            <div>
+              <p className="text-sm font-medium text-indigo-800">How it works</p>
+              <p className="mt-1 text-xs text-indigo-600 leading-relaxed">
+                When someone sends you a DM containing one of your trigger keywords, 
+                the auto-reply message will be sent back automatically. Leave keywords empty to reply to all DMs.
+              </p>
+            </div>
+          </div>
+
+          <form onSubmit={handleSubmit(onSave)} className="mt-6 space-y-5">
+            {/* Active toggle */}
+            <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-5 py-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-800">Automation Active</p>
+                <p className="text-xs text-slate-500">Enable or pause this automation</p>
+              </div>
+              <button
+                type="button"
+                id="toggle-dm-active"
+                onClick={() => setValue("active", !active)}
+                className={`relative inline-flex h-6 w-11 rounded-full transition-colors ${
+                  active ? "bg-violet-600" : "bg-slate-300"
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                    active ? "translate-x-5" : "translate-x-0.5"
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* Keywords */}
+            <div>
+              <label className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700">
+                <Hash size={14} className="text-indigo-500" />
+                Trigger Keywords
+                <span className="font-normal text-slate-400">(comma separated)</span>
+              </label>
+              <input
+                id="dm-keywords-input"
+                {...register("keywords")}
+                placeholder="e.g. hello, help, pricing"
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 placeholder-slate-400 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+              />
+              {keywordTags.length > 0 && (
+                <div className="mt-2.5 flex flex-wrap gap-2">
+                  {keywordTags.map((kw, i) => (
+                    <span
+                      key={i}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-indigo-100 px-3 py-1 text-xs font-medium text-indigo-700"
+                    >
+                      {kw}
+                      <button type="button" onClick={() => removeKeyword(i)} className="opacity-60 hover:opacity-100">
+                        <X size={11} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Auto-Reply Message */}
+            <div>
+              <label className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700">
+                <Send size={14} className="text-indigo-500" />
+                Auto-Reply Message
+              </label>
+              <textarea
+                id="dm-reply-message-input"
+                {...register("dmReplyMessage", { required: true })}
+                rows={4}
+                placeholder="Write the automatic reply message…"
+                className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 placeholder-slate-400 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+              />
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 rounded-xl border border-slate-200 bg-white py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                id="save-dm-automation-btn"
+                type="submit"
+                disabled={isSaving}
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-500 py-3 text-sm font-semibold text-white shadow-md transition hover:scale-[1.02] hover:shadow-lg disabled:opacity-60 disabled:hover:scale-100"
+              >
+                {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Mail size={16} />}
+                {isSaving ? "Saving…" : "Save DM Automation"}
               </button>
             </div>
           </form>

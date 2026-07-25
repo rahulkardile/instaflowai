@@ -2,7 +2,7 @@ import InstagramAccount from "../../models/InstagramAccounts";
 import Reel from "../../models/Reels";
 import { User } from "../../models/User";
 
-const GRAPH_API_BASE = "https://graph.facebook.com/v20.0";
+const IG_GRAPH_API_BASE = "https://graph.instagram.com/v20.0";
 
 export class InstagramService {
   /**
@@ -61,13 +61,12 @@ export class InstagramService {
     if (!shortTokenData.access_token) {
       throw new Error(
         shortTokenData.error_message ||
-          shortTokenData.error?.message ||
-          "Failed to get short-lived token"
+        shortTokenData.error?.message ||
+        "Failed to get short-lived token"
       );
     }
 
     const shortToken = shortTokenData.access_token;
-    const igUserId = String(shortTokenData.user_id);
 
     // 2. Exchange short-lived token for long-lived token
     const longTokenParams = new URLSearchParams({
@@ -92,11 +91,15 @@ export class InstagramService {
 
     const accessToken = longTokenData.access_token;
 
-    // 3. Get Instagram profile (username)
+    // 3. Get Instagram profile (id + username)
+    //    IMPORTANT: We fetch 'id' from the API as a string to avoid JavaScript
+    //    number precision loss on large Instagram user IDs (>2^53).
+    //    The token exchange returns user_id as a number which gets corrupted.
     const profileRes = await fetch(
-      `https://graph.instagram.com/v20.0/me?fields=username&access_token=${accessToken}`
+      `${IG_GRAPH_API_BASE}/me?fields=id,username&access_token=${accessToken}`
     );
     const profileData = (await profileRes.json()) as {
+      id?: string;
       username?: string;
       error?: { message: string };
     };
@@ -105,14 +108,18 @@ export class InstagramService {
       throw new Error(profileData.error.message);
     }
 
+    // Use the string ID from the API, NOT the numeric user_id from token exchange
+    const igUserId = profileData.id || String(shortTokenData.user_id);
     const username = profileData.username || "";
+
+    console.log(`[handleCallback] IG User ID (from API): ${igUserId}, username: ${username}`);
 
     const tokenExpiresAt = new Date();
     tokenExpiresAt.setDate(tokenExpiresAt.getDate() + 60);
 
-    // 4. Save to database
+    // 4. Save to database (upsert by userId to avoid duplicates on re-auth)
     await InstagramAccount.findOneAndUpdate(
-      { userId, instagramUserId: igUserId },
+      { userId },
       {
         userId,
         instagramUserId: igUserId,
@@ -126,6 +133,45 @@ export class InstagramService {
 
     // 5. Mark user connected
     await User.findByIdAndUpdate(userId, { instagramConnected: true });
+
+    // 6. Subscribe to webhooks (comments + messages)
+    await this.subscribeToWebhook(igUserId, accessToken);
+  }
+
+  /**
+   * Subscribe the Instagram account to webhook fields (comments, messages).
+   * This ensures Meta sends webhook events to our callback URL.
+   */
+  async subscribeToWebhook(igUserId: string, accessToken: string): Promise<void> {
+    try {
+      const params = new URLSearchParams({
+        subscribed_fields: "comments,messages",
+        access_token: accessToken,
+      });
+      const subscribeRes = await fetch(
+        `${IG_GRAPH_API_BASE}/${igUserId}/subscribed_apps?${params.toString()}`,
+        {
+          method: "POST",
+        }
+      );
+      const subscribeData = (await subscribeRes.json()) as {
+        success?: boolean;
+        error?: { message: string; code: number };
+      };
+      console.log(`[subscribeToWebhook] Response:`, JSON.stringify(subscribeData));
+      if (subscribeData.error) {
+        console.error(
+          `[subscribeToWebhook] Failed: ${subscribeData.error.message}`
+        );
+      } else {
+        console.log(`[subscribeToWebhook] Successfully subscribed IG user ${igUserId} to comments + messages`);
+      }
+    } catch (err) {
+      console.error(
+        `[subscribeToWebhook] Error:`,
+        err instanceof Error ? err.message : err
+      );
+    }
   }
 
   /**
@@ -137,13 +183,20 @@ export class InstagramService {
       throw new Error("No Instagram account connected");
     }
 
+    // Auto-subscribe/ensure webhook is subscribed on each Reels sync/fetch
+    if (igAccount.instagramUserId && igAccount.accessToken) {
+      this.subscribeToWebhook(igAccount.instagramUserId, igAccount.accessToken).catch((e) => {
+        console.error("[fetchAndSyncReels] Auto-subscribe webhook failed:", e);
+      });
+    }
+
     const fields =
       "id,caption,thumbnail_url,permalink,like_count,comments_count,media_type,media_product_type";
-    
+
     console.log("--- Fetching Instagram Media ---");
     console.log("Instagram User ID:", igAccount.instagramUserId);
 
-    const mediaRes = await fetch(`https://graph.instagram.com/v20.0/me/media?fields=${fields}&access_token=${igAccount.accessToken}`);
+    const mediaRes = await fetch(`${IG_GRAPH_API_BASE}/me/media?fields=${fields}&access_token=${igAccount.accessToken}`);
     const mediaData = (await mediaRes.json()) as {
       data?: Array<{
         id: string;
@@ -197,7 +250,7 @@ export class InstagramService {
   ): Promise<unknown> {
     console.log(`[replyToComment] Replying to comment ${commentId}`);
     const res = await fetch(
-      `${GRAPH_API_BASE}/${commentId}/replies`,
+      `${IG_GRAPH_API_BASE}/${commentId}/replies`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -215,6 +268,7 @@ export class InstagramService {
   /**
    * Send a private DM via the Instagram User Messaging endpoint.
    * Uses instagramUserId (not pageId) — required for direct Instagram OAuth.
+   * Uses comment_id based recipient for the Private Replies API.
    * Throws an error if the Graph API returns an error response.
    */
   async sendPrivateDM(
@@ -225,7 +279,7 @@ export class InstagramService {
   ): Promise<unknown> {
     console.log(`[sendPrivateDM] Sending DM to commenter of comment ${commentId} via IG user ${igUserId}`);
     const res = await fetch(
-      `${GRAPH_API_BASE}/${igUserId}/messages`,
+      `${IG_GRAPH_API_BASE}/${igUserId}/messages`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -238,6 +292,38 @@ export class InstagramService {
     );
     const data = (await res.json()) as { error?: { message: string; code: number } };
     console.log(`[sendPrivateDM] Response:`, JSON.stringify(data));
+    if (data.error) {
+      throw new Error(`Graph API error (${data.error.code}): ${data.error.message}`);
+    }
+    return data;
+  }
+
+  /**
+   * Send a DM reply to an incoming DM sender.
+   * Uses the Instagram Messaging API with the sender's Instagram-scoped ID.
+   * Throws an error if the Graph API returns an error response.
+   */
+  async sendDMReply(
+    igUserId: string,
+    recipientId: string,
+    message: string,
+    accessToken: string
+  ): Promise<unknown> {
+    console.log(`[sendDMReply] Sending DM reply to ${recipientId} via IG user ${igUserId}`);
+    const res = await fetch(
+      `${IG_GRAPH_API_BASE}/${igUserId}/messages`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recipient: { id: recipientId },
+          message: { text: message },
+          access_token: accessToken,
+        }),
+      }
+    );
+    const data = (await res.json()) as { error?: { message: string; code: number } };
+    console.log(`[sendDMReply] Response:`, JSON.stringify(data));
     if (data.error) {
       throw new Error(`Graph API error (${data.error.code}): ${data.error.message}`);
     }

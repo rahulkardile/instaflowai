@@ -24,6 +24,21 @@ app.use(helmet());
 app.use(compression());
 app.use(express.json());
 
+import fs from "fs";
+import path from "path";
+
+app.use((req, res, next) => {
+  const WEBHOOK_LOG_FILE = path.join(process.cwd(), "webhook_debug.log");
+  const timestamp = new Date().toISOString();
+  const logLine = `[${timestamp}] REQUEST: ${req.method} ${req.originalUrl} - Headers: ${JSON.stringify(req.headers)} - Body: ${JSON.stringify(req.body)}\n`;
+  try {
+    fs.appendFileSync(WEBHOOK_LOG_FILE, logLine);
+  } catch (err) {
+    console.error("Failed to write request log:", err);
+  }
+  next();
+});
+
 app.get("/health", (_, res) => {
     res.status(200).json({
         success: true,
