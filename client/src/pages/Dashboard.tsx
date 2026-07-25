@@ -238,16 +238,6 @@ export default function Dashboard() {
     },
   });
 
-  const repliesToday = logs.filter((l) => {
-    const d = new Date(l.createdAt);
-    const today = new Date();
-    return (
-      l.action === "COMMENT_REPLY" &&
-      d.toDateString() === today.toDateString()
-    );
-  }).length;
-
-  const dmsSent = logs.filter((l) => l.action === "SEND_DM" || l.action === "DM_AUTO_REPLY").length;
 
   const { data: reels = [], isLoading: loadingReels } = useQuery<Reel[]>({
     queryKey: ["reels"],
@@ -258,7 +248,7 @@ export default function Dashboard() {
     enabled: user.instagramConnected,
   });
 
-  const { data: igAccount, isLoading: loadingIgAccount } = useQuery({
+  const { data: igAccount } = useQuery({
     queryKey: ["igAccount"],
     queryFn: async () => {
       const { data } = await api.get("/instagram/account");

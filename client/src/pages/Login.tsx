@@ -93,6 +93,7 @@ export default function Login(): JSX.Element {
 
     if (buttonDiv) {
       window.google.accounts.id.renderButton(buttonDiv, {
+        type: "standard",
         theme: "outline",
         size: "large",
         shape: "pill",
