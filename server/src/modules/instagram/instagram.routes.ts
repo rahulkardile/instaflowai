@@ -1,402 +1,510 @@
 import { Router, Request, Response } from "express";
+import fs from "fs";
+import path from "path";
 import { authMiddleware } from "../../middleware/authMiddleware";
 import { InstagramService } from "./instagram.service";
 import InstagramAccount from "../../models/InstagramAccounts";
 import Automation from "../../models/Automation";
 import ExecutionLog from "../../models/ExecutionLog";
-import fs from "fs";
-import path from "path";
+import {
+  WEBHOOK_LOG_FILENAME,
+  EXECUTION_ACTION,
+  EXECUTION_STATUS,
+  AUTOMATION_TYPE,
+  WEBHOOK_FIELD,
+} from "../../constants";
+import type { ApiResponse } from "../../types/common.types";
+import type { MappedReel, WebhookEntry, WebhookChange, WebhookCommentValue, WebhookFeedCommentValue, WebhookMessagingEvent, NormalisedCommentEvent } from "../../types/instagram.types";
+import type { ExecutionStatus } from "../../types/executionLog.types";
 
 const instagramRoutes = Router();
 const instagramService = new InstagramService();
 
-// Persistent webhook log file
-const WEBHOOK_LOG_FILE = path.join(process.cwd(), "webhook_debug.log");
+// ─── Persistent webhook log ────────────────────────────────────────────────
+const WEBHOOK_LOG_FILE = path.join(process.cwd(), WEBHOOK_LOG_FILENAME);
 
-function logToFile(label: string, data: unknown) {
-  const timestamp = new Date().toISOString();
-  const line = `[${timestamp}] ${label}: ${JSON.stringify(data)}\n`;
-  fs.appendFileSync(WEBHOOK_LOG_FILE, line);
+function logToFile(label: string, data: unknown): void {
+  const line = `[${new Date().toISOString()}] ${label}: ${JSON.stringify(data)}\n`;
+  try {
+    fs.appendFileSync(WEBHOOK_LOG_FILE, line);
+  } catch {
+    // Never crash the server over a logging failure
+  }
 }
 
-/**
- * GET /auth — Return the Facebook OAuth URL.
- */
+// ─── GET /auth — Return the Instagram OAuth URL ────────────────────────────
 instagramRoutes.get("/auth", authMiddleware, async (req: Request, res: Response) => {
   try {
     const url = instagramService.getAuthUrl(req.user!.userId);
-    return res.status(200).json({ success: true, data: { url } });
+    const response: ApiResponse<{ url: string }> = { success: true, data: { url } };
+    return res.status(200).json(response);
   } catch (error) {
-    return res.status(500).json({
+    const response: ApiResponse = {
       success: false,
       message: error instanceof Error ? error.message : "Failed to generate auth URL",
-    });
+    };
+    return res.status(500).json(response);
   }
 });
 
-/**
- * GET /callback — Facebook redirects here after user authorizes.
- */
+// ─── GET /callback — Facebook redirects here after user authorizes ─────────
 instagramRoutes.get("/callback", async (req: Request, res: Response) => {
+  const clientUrl = process.env.CLIENT_URL?.replace(/\/$/, "") ?? "http://localhost:5173";
+
   try {
     const code = req.query.code as string;
     const userId = req.query.state as string;
+    const errorParam = req.query.error as string | undefined;
+    const errorReason = req.query.error_reason as string | undefined;
+
+    // Instagram may send back an error (e.g. user denied access)
+    if (errorParam) {
+      console.warn(`[callback] Instagram returned error: ${errorParam} — ${errorReason}`);
+      return res.redirect(
+        `${clientUrl}/dashboard?ig_error=true&reason=${encodeURIComponent(errorReason ?? errorParam)}`
+      );
+    }
 
     if (!code || !userId) {
-      return res.status(400).json({
-        success: false,
-        message: "Missing code or state parameter",
-      });
+      console.warn("[callback] Missing code or state in query params:", req.query);
+      return res.redirect(`${clientUrl}/dashboard?ig_error=true&reason=missing_params`);
     }
 
     await instagramService.handleCallback(code, userId);
-
-    const clientUrl = process.env.CLIENT_URL?.replace(/\/$/, "") || "http://localhost:5173";
     return res.redirect(`${clientUrl}/dashboard?ig_connected=true`);
   } catch (error) {
-    console.error("Instagram callback error:", error);
-    const clientUrl = process.env.CLIENT_URL?.replace(/\/$/, "") || "http://localhost:5173";
-    return res.redirect(`${clientUrl}/dashboard?ig_error=true`);
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("[callback] OAuth error:", message, error);
+    return res.redirect(
+      `${clientUrl}/dashboard?ig_error=true&reason=${encodeURIComponent(message)}`
+    );
   }
 });
 
-/**
- * DELETE /disconnect — Disconnect the user's Instagram account.
- */
+// ─── DELETE /disconnect — Remove connected Instagram account ───────────────
 instagramRoutes.delete("/disconnect", authMiddleware, async (req: Request, res: Response) => {
   try {
     await instagramService.disconnect(req.user!.userId);
-    return res.status(200).json({ success: true, message: "Instagram disconnected" });
+    const response: ApiResponse = { success: true, message: "Instagram disconnected" };
+    return res.status(200).json(response);
   } catch (error) {
-    return res.status(500).json({
+    const response: ApiResponse = {
       success: false,
       message: error instanceof Error ? error.message : "Failed to disconnect",
-    });
+    };
+    return res.status(500).json(response);
   }
 });
 
-/**
- * GET /reels — Fetch and sync the user's Instagram Reels.
- */
+// ─── GET /reels — Fetch and sync the user's Reels ─────────────────────────
 instagramRoutes.get("/reels", authMiddleware, async (req: Request, res: Response) => {
   try {
     const reels = await instagramService.fetchAndSyncReels(req.user!.userId);
-
-    // Map MongoDB camelCase fields → snake_case shape expected by the client
-    const mapped = reels.map((r: any) => ({
-      id: r.reelId ?? r._id?.toString(),
-      caption: r.caption,
-      thumbnail_url: r.thumbnailUrl,
-      media_url: r.mediaUrl,
-      like_count: r.likesCount ?? 0,
-      comments_count: r.commentsCount ?? 0,
-      permalink: r.permalink,
-      timestamp: r.createdAt,
-    }));
-
-    return res.status(200).json({ success: true, data: mapped });
+    const response: ApiResponse<MappedReel[]> = { success: true, data: reels };
+    return res.status(200).json(response);
   } catch (error) {
-    return res.status(500).json({
+    const response: ApiResponse = {
       success: false,
       message: error instanceof Error ? error.message : "Failed to fetch reels",
-    });
+    };
+    return res.status(500).json(response);
   }
 });
 
-/**
- * GET /account — Fetch the user's connected Instagram Account info.
- */
+// ─── GET /account — Return connected Instagram account info ────────────────
 instagramRoutes.get("/account", authMiddleware, async (req: Request, res: Response) => {
   try {
     const igAccount = await InstagramAccount.findOne({ userId: req.user!.userId }).select(
       "instagramUserId username createdAt tokenExpiresAt"
     );
-    return res.status(200).json({ success: true, data: igAccount });
+    const response: ApiResponse = { success: true, data: igAccount };
+    return res.status(200).json(response);
   } catch (error) {
-    return res.status(500).json({
+    const response: ApiResponse = {
       success: false,
       message: error instanceof Error ? error.message : "Failed to fetch account",
-    });
+    };
+    return res.status(500).json(response);
   }
 });
 
-/**
- * GET /conversations — Fetch DM history for the user.
- */
+// ─── GET /conversations — Fetch DM conversation logs ──────────────────────
 instagramRoutes.get("/conversations", authMiddleware, async (req: Request, res: Response) => {
   try {
     const logs = await ExecutionLog.find({
       userId: req.user!.userId,
-      action: { $in: ["DM_RECEIVED", "SEND_DM", "DM_AUTO_REPLY"] },
-      dmSenderId: { $exists: true, $ne: null }
+      action: { $in: [EXECUTION_ACTION.DM_RECEIVED, EXECUTION_ACTION.SEND_DM, EXECUTION_ACTION.DM_AUTO_REPLY] },
+      dmSenderId: { $exists: true, $ne: null },
     }).sort({ createdAt: 1 });
-    return res.status(200).json({ success: true, data: logs });
+
+    const response: ApiResponse = { success: true, data: logs };
+    return res.status(200).json(response);
   } catch (error) {
-    return res.status(500).json({
+    const response: ApiResponse = {
       success: false,
       message: error instanceof Error ? error.message : "Failed to fetch conversations",
-    });
+    };
+    return res.status(500).json(response);
   }
 });
 
-/**
- * POST /message — Send a DM reply from the portal.
- */
+// ─── POST /message — Send a manual DM reply from the portal ───────────────
 instagramRoutes.post("/message", authMiddleware, async (req: Request, res: Response) => {
   try {
-    const { recipientId, text } = req.body;
+    const { recipientId, text } = req.body as { recipientId?: string; text?: string };
+
     if (!recipientId || !text) {
-      return res.status(400).json({ success: false, message: "recipientId and text are required" });
+      const response: ApiResponse = { success: false, message: "recipientId and text are required" };
+      return res.status(400).json(response);
     }
 
     const igAccount = await InstagramAccount.findOne({ userId: req.user!.userId });
-    if (!igAccount || !igAccount.accessToken) {
-      return res.status(400).json({ success: false, message: "Instagram account not connected" });
+    if (!igAccount?.accessToken) {
+      const response: ApiResponse = { success: false, message: "Instagram account not connected" };
+      return res.status(400).json(response);
     }
 
-    await instagramService.sendDMReply(
-      igAccount.instagramUserId!,
-      recipientId,
-      text,
-      igAccount.accessToken
-    );
+    await instagramService.sendDMReply(igAccount.instagramUserId!, recipientId, text, igAccount.accessToken);
 
     const log = await ExecutionLog.create({
       userId: igAccount.userId,
       instagramAccountId: igAccount._id,
       dmSenderId: recipientId,
       dmText: text,
-      action: "SEND_DM",
-      status: "SUCCESS",
+      action: EXECUTION_ACTION.SEND_DM,
+      status: EXECUTION_STATUS.SUCCESS,
     });
 
-    return res.status(200).json({ success: true, data: log });
+    const response: ApiResponse = { success: true, data: log };
+    return res.status(200).json(response);
   } catch (error) {
-    return res.status(500).json({
+    const response: ApiResponse = {
       success: false,
       message: error instanceof Error ? error.message : "Failed to send message",
-    });
+    };
+    return res.status(500).json(response);
   }
 });
 
-// ─── Webhook endpoints (no auth) ──────────────────────────────────────────
+// ─── POST /comment — Post a manual comment on a reel/media ────────────────
+/**
+ * Body: { mediaId: string, message: string }
+ * Posts a top-level comment from the connected Instagram account onto any media.
+ * Requires: instagram_business_manage_comments permission.
+ */
+instagramRoutes.post("/comment", authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const { mediaId, message } = req.body as { mediaId?: string; message?: string };
+
+    if (!mediaId || !message?.trim()) {
+      const response: ApiResponse = { success: false, message: "mediaId and message are required" };
+      return res.status(400).json(response);
+    }
+
+    const igAccount = await InstagramAccount.findOne({ userId: req.user!.userId });
+    if (!igAccount?.accessToken) {
+      const response: ApiResponse = { success: false, message: "Instagram account not connected" };
+      return res.status(400).json(response);
+    }
+
+    const result = await instagramService.postComment(mediaId, message.trim(), igAccount.accessToken);
+
+    // Log the manual comment action
+    const log = await ExecutionLog.create({
+      userId: igAccount.userId,
+      instagramAccountId: igAccount._id,
+      commentId: result.id,
+      commentText: message.trim(),
+      action: EXECUTION_ACTION.COMMENT_REPLY,
+      status: EXECUTION_STATUS.SUCCESS,
+    });
+
+    console.log(`[POST /comment] Comment posted — id: ${result.id}, media: ${mediaId}`);
+    const response: ApiResponse = { success: true, data: { commentId: result.id, log } };
+    return res.status(201).json(response);
+  } catch (error) {
+    const response: ApiResponse = {
+      success: false,
+      message: error instanceof Error ? error.message : "Failed to post comment",
+    };
+    return res.status(500).json(response);
+  }
+});
+
+// ─── GET /comments/:mediaId — Read all comments on a media object ──────────
+/**
+ * Fetches all top-level comments + first-level replies from the Instagram API
+ * for the given media ID. Ordered newest first.
+ */
+instagramRoutes.get("/comments/:mediaId", authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const { mediaId } = req.params;
+
+    const igAccount = await InstagramAccount.findOne({ userId: req.user!.userId });
+    if (!igAccount?.accessToken) {
+      const response: ApiResponse = { success: false, message: "Instagram account not connected" };
+      return res.status(400).json(response);
+    }
+
+    const comments = await instagramService.getComments(mediaId, igAccount.accessToken);
+    const response: ApiResponse = { success: true, data: { mediaId, count: comments.length, comments } };
+    return res.status(200).json(response);
+  } catch (error) {
+    const response: ApiResponse = {
+      success: false,
+      message: error instanceof Error ? error.message : "Failed to fetch comments",
+    };
+    return res.status(500).json(response);
+  }
+});
+
+// ─── GET /comment-logs — Read all webhook-captured incoming comments ────────
+/**
+ * Returns all comments received via webhook (COMMENT_RECEIVED entries in ExecutionLog),
+ * ordered newest first. This is the real-time comment stream that the webhook captured.
+ */
+instagramRoutes.get("/comment-logs", authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const mediaId = req.query.mediaId as string | undefined;
+
+    const filter: Record<string, unknown> = {
+      userId: req.user!.userId,
+      action: EXECUTION_ACTION.COMMENT_RECEIVED,
+    };
+
+    // Optional: filter to a specific reel's comments
+    if (mediaId) {
+      // commentId field stores the IG comment ID; we cannot filter by mediaId directly here
+      // because ExecutionLog doesn't store mediaId. Add a log note for clarity.
+      console.log(`[GET /comment-logs] Note: mediaId filter is advisory — ExecutionLog stores comment IDs, not media IDs.`);
+    }
+
+    const logs = await ExecutionLog.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(200)
+      .select("commenterId commenterUsername commentId commentText createdAt status");
+
+    console.log(`[GET /comment-logs] Returning ${logs.length} comment log(s) for user ${req.user!.userId}`);
+
+    const response: ApiResponse = {
+      success: true,
+      data: {
+        count: logs.length,
+        comments: logs,
+      },
+    };
+    return res.status(200).json(response);
+  } catch (error) {
+    const response: ApiResponse = {
+      success: false,
+      message: error instanceof Error ? error.message : "Failed to fetch comment logs",
+    };
+    return res.status(500).json(response);
+  }
+});
+
+// ─── Webhook Endpoints (no auth — public, called by Meta) ─────────────────
 
 /**
- * GET /webhook — Facebook webhook verification.
+ * GET /webhook — Meta webhook verification challenge.
  */
 instagramRoutes.get("/webhook", (req: Request, res: Response) => {
   const mode = req.query["hub.mode"] as string;
   const token = req.query["hub.verify_token"] as string;
   const challenge = req.query["hub.challenge"] as string;
 
-  console.log("--- Webhook Verification Request ---");
-  console.log("Received mode:", mode);
-  console.log("Received token:", token);
-  console.log("Expected token:", process.env.FACEBOOK_WEBHOOK_VERIFY_TOKEN);
   logToFile("GET Verification Request", { mode, token, challenge });
+  console.log("[webhook] Verification request — mode:", mode, "token match:", token === process.env.FACEBOOK_WEBHOOK_VERIFY_TOKEN);
 
   if (mode === "subscribe" && token === process.env.FACEBOOK_WEBHOOK_VERIFY_TOKEN) {
-    console.log("Verification SUCCESS");
+    console.log("[webhook] Verification SUCCESS");
     return res.status(200).send(challenge);
   }
 
-  console.log("Verification FAILED (403)");
+  console.warn("[webhook] Verification FAILED — token mismatch");
   return res.status(403).json({ success: false, message: "Verification failed" });
 });
 
 /**
- * POST /webhook — Receive incoming webhook events from Facebook / Instagram.
- * Handles both comment events and messaging events.
+ * POST /webhook — Receive incoming webhook events from Meta.
+ * Handles both comment events (entry.changes) and DM events (entry.messaging).
+ * Always responds 200 immediately — Meta requires this.
  */
 instagramRoutes.post("/webhook", async (req: Request, res: Response) => {
-  try {
-    const body = req.body;
+  // Respond 200 immediately — Meta retries if it doesn't get a fast response
+  res.sendStatus(200);
 
-    console.log("[webhook] Raw payload:", JSON.stringify(body, null, 2));
+  try {
+    const body = req.body as { entry?: WebhookEntry[] };
     logToFile("POST Webhook Payload", body);
 
-    if (!body.entry) {
-      return res.sendStatus(200);
-    }
+    if (!body.entry?.length) return;
 
     for (const entry of body.entry) {
-      // ─── Handle Comment Events ─────────────────────────────────────
-      if (entry.changes) {
+      if (entry.changes?.length) {
         for (const change of entry.changes) {
-          await handleCommentWebhook(change, entry);
+          await handleCommentWebhook(change, entry).catch((err) => {
+            console.error("[webhook] Comment handler error:", err);
+          });
         }
       }
 
-      // ─── Handle Messaging Events (DM automation) ───────────────────
-      if (entry.messaging) {
+      if (entry.messaging?.length) {
         for (const messagingEvent of entry.messaging) {
-          await handleMessagingWebhook(messagingEvent, entry);
+          await handleMessagingWebhook(messagingEvent, entry).catch((err) => {
+            console.error("[webhook] Messaging handler error:", err);
+          });
         }
       }
     }
   } catch (error) {
-    console.error("[webhook] Unhandled processing error:", error);
+    console.error("[webhook] Unhandled error:", error);
+  }
+});
+
+// ─── Private webhook handler helpers ──────────────────────────────────────
+
+/**
+ * Normalise a raw webhook change into a consistent comment event shape.
+ * Returns null if the change is not a comment event we can handle.
+ */
+function normaliseCommentChange(change: WebhookChange): NormalisedCommentEvent | null {
+  const val = change.value as WebhookCommentValue & WebhookFeedCommentValue;
+
+  if (change.field === WEBHOOK_FIELD.COMMENTS) {
+    const comment_id = val.id ?? val.comment_id ?? "";
+    const sender_id = val.from?.id ?? "";
+    const commenter_username = val.from?.username ?? "";
+    const message = val.text ?? "";
+    const media_id = val.media?.id ?? val.media_id ?? "";
+
+    if (!comment_id) return null;
+    return { comment_id, sender_id, commenter_username, message, media_id };
   }
 
-  // Always respond 200 to webhooks — Meta requires this
-  return res.sendStatus(200);
-});
+  if (change.field === WEBHOOK_FIELD.FEED && val.item === "comment") {
+    const comment_id = val.comment_id ?? "";
+    const sender_id = val.sender_id ?? "";
+    const commenter_username = val.sender_name ?? "";
+    const message = val.message ?? "";
+    const media_id = val.media_id ?? val.post_id ?? "";
+
+    if (!comment_id) return null;
+    return { comment_id, sender_id, commenter_username, message, media_id };
+  }
+
+  console.log(`[webhook] Skipping unhandled field: ${change.field}`);
+  return null;
+}
 
 /**
  * Handle a comment webhook change event.
- * Extracts comment details and triggers matching COMMENT automations.
+ * Logs the incoming comment and triggers any matching COMMENT automations.
  */
-async function handleCommentWebhook(change: any, entry: any): Promise<void> {
-  let comment_id = "";
-  let sender_id = "";
-  let commenterUsername = "";
-  let message = "";
-  let media_id = "";
+async function handleCommentWebhook(change: WebhookChange, entry: WebhookEntry): Promise<void> {
+  const event = normaliseCommentChange(change);
+  if (!event) return;
 
-  if (change.field === "comments" && change.value) {
-    const val = change.value as any;
-    comment_id = val.id || val.comment_id || "";
-    sender_id = val.from?.id || "";
-    commenterUsername = val.from?.username || "";
-    message = val.text || "";
-    media_id = val.media?.id || val.media_id || "";
-  } else if (change.field === "feed" && change.value?.item === "comment") {
-    const val = change.value as any;
-    comment_id = val.comment_id || "";
-    sender_id = val.sender_id || "";
-    commenterUsername = val.sender_name || "";
-    message = val.message || "";
-    media_id = val.media_id || val.post_id || "";
-  } else {
-    console.log(`[webhook] Skipping unhandled field: ${change.field}`);
-    return;
-  }
+  const { comment_id, sender_id, commenter_username, message, media_id } = event;
 
   console.log(
-    `[webhook] Comment event — comment_id: ${comment_id}, media_id: ${media_id}, message: "${message}", from: @${commenterUsername}`
+    `[webhook-comment] comment_id: ${comment_id}, media_id: ${media_id}, from: @${commenter_username}, text: "${message}"`
   );
 
-  // Find the recipient's Instagram Account
-  const recipientIgUserId = entry.id;
-  const igAccountRecipient = await InstagramAccount.findOne({ instagramUserId: recipientIgUserId });
+  // Find the Instagram account that owns the post
+  const recipientIgAccount = await InstagramAccount.findOne({ instagramUserId: entry.id });
 
-  if (igAccountRecipient) {
-    // Log the incoming comment
+  if (recipientIgAccount) {
     await ExecutionLog.create({
-      userId: igAccountRecipient.userId,
-      instagramAccountId: igAccountRecipient._id,
+      userId: recipientIgAccount.userId,
+      instagramAccountId: recipientIgAccount._id,
       commenterId: sender_id,
-      commenterUsername,
+      commenterUsername: commenter_username,
       commentId: comment_id,
       commentText: message,
-      action: "COMMENT_RECEIVED",
-      status: "SUCCESS",
+      action: EXECUTION_ACTION.COMMENT_RECEIVED,
+      status: EXECUTION_STATUS.SUCCESS,
     });
   }
 
   // Find all enabled COMMENT automations
-  const automations = await Automation.find({ type: "COMMENT", enabled: true });
-  console.log(`[webhook] Found ${automations.length} enabled COMMENT automation(s)`);
+  const automations = await Automation.find({ type: AUTOMATION_TYPE.COMMENT, enabled: true });
+  console.log(`[webhook-comment] ${automations.length} enabled COMMENT automation(s)`);
 
   for (const automation of automations) {
-    // Match logic: reel must match, AND (no keywords = match all, or at least one keyword matches)
     const reelMatch = automation.reelId === media_id;
-
-    const hasKeywords = automation.keywords && automation.keywords.length > 0;
+    const hasKeywords = automation.keywords?.length > 0;
     const keywordMatch = hasKeywords
-      ? automation.keywords!.some((kw: string) =>
-          message?.toLowerCase().includes(kw.toLowerCase())
-        )
-      : true; // No keywords configured = match all comments on this reel
+      ? automation.keywords.some((kw: string) => message.toLowerCase().includes(kw.toLowerCase()))
+      : true;
 
     console.log(
-      `[webhook] Automation ${automation._id}: reelMatch=${reelMatch}, keywordMatch=${keywordMatch}, hasKeywords=${hasKeywords} (keywords: [${automation.keywords?.join(", ")}], reelId: ${automation.reelId})`
+      `[webhook-comment] Automation ${automation._id}: reelMatch=${reelMatch} keywordMatch=${keywordMatch}`
     );
 
-    // Require reel to match AND keyword condition to be met
-    if (!reelMatch || !keywordMatch) {
-      console.log(`[webhook] Automation ${automation._id} skipped — no match`);
-      continue;
-    }
+    if (!reelMatch || !keywordMatch) continue;
 
-    // Look up the Instagram account for this automation
     const igAccount = await InstagramAccount.findById(automation.instagramAccountId);
     if (!igAccount?.accessToken) {
-      console.log(`[webhook] Automation ${automation._id} skipped — no IG account or access token`);
+      console.warn(`[webhook-comment] Automation ${automation._id} skipped — no access token`);
       continue;
     }
 
-    console.log(`[webhook] Automation ${automation._id} matched! IG user: ${igAccount.instagramUserId}`);
-
     // ── Reply to comment ──────────────────────────────────────
-    let commentReplyStatus: "SUCCESS" | "FAILED" = "SUCCESS";
-    let commentReplyError = "";
-    try {
-      if (automation.commentReply) {
-        console.log(`[webhook] Replying to comment with: "${automation.commentReply}"`);
-        await instagramService.replyToComment(
-          comment_id,
-          automation.commentReply,
-          igAccount.accessToken
-        );
-        console.log(`[webhook] Comment reply sent successfully`);
-      } else {
-        console.log(`[webhook] No commentReply configured — skipping`);
-      }
-    } catch (err) {
-      commentReplyStatus = "FAILED";
-      commentReplyError = err instanceof Error ? err.message : "Unknown error";
-      console.error(`[webhook] Comment reply FAILED:`, commentReplyError);
-    }
-
     if (automation.commentReply) {
+      let replyStatus: ExecutionStatus = EXECUTION_STATUS.SUCCESS;
+      let replyError = "";
+
+      try {
+        await instagramService.replyToComment(comment_id, automation.commentReply, igAccount.accessToken);
+        console.log(`[webhook-comment] Comment reply sent for automation ${automation._id}`);
+      } catch (err) {
+        replyStatus = EXECUTION_STATUS.FAILED;
+        replyError = err instanceof Error ? err.message : "Unknown error";
+        console.error(`[webhook-comment] Comment reply FAILED:`, replyError);
+      }
+
       await ExecutionLog.create({
         automationId: automation._id,
         commenterId: sender_id,
-        commenterUsername,
+        commenterUsername: commenter_username,
         commentId: comment_id,
         commentText: message,
-        action: "COMMENT_REPLY",
-        status: commentReplyStatus,
-        errorMessage: commentReplyError || undefined,
+        action: EXECUTION_ACTION.COMMENT_REPLY,
+        status: replyStatus,
+        errorMessage: replyError || undefined,
       });
     }
 
-    // ── Send DM (Private Reply to commenter) ─────────────────
-    let dmStatus: "SUCCESS" | "FAILED" = "SUCCESS";
-    let dmError = "";
-    try {
-      if (automation.dmMessage) {
-        // Use instagramUserId — required for direct Instagram OAuth (no Facebook Page)
-        const igUserId = igAccount.instagramUserId;
-        if (!igUserId) {
-          throw new Error("No instagramUserId on account record — reconnect Instagram");
+    // ── Send Private DM to commenter ──────────────────────────
+    if (automation.dmMessage) {
+      let dmStatus: ExecutionStatus = EXECUTION_STATUS.SUCCESS;
+      let dmError = "";
+
+      try {
+        if (!igAccount.instagramUserId) {
+          throw new Error("instagramUserId missing — reconnect Instagram");
         }
-        console.log(`[webhook] Sending DM via IG user ${igUserId}: "${automation.dmMessage}"`);
         await instagramService.sendPrivateDM(
-          igUserId,
+          igAccount.instagramUserId,
           comment_id,
           automation.dmMessage,
           igAccount.accessToken
         );
-        console.log(`[webhook] DM sent successfully`);
-      } else {
-        console.log(`[webhook] No dmMessage configured — skipping`);
+        console.log(`[webhook-comment] Private DM sent for automation ${automation._id}`);
+      } catch (err) {
+        dmStatus = EXECUTION_STATUS.FAILED;
+        dmError = err instanceof Error ? err.message : "Unknown error";
+        console.error(`[webhook-comment] Private DM FAILED:`, dmError);
       }
-    } catch (err) {
-      dmStatus = "FAILED";
-      dmError = err instanceof Error ? err.message : "Unknown error";
-      console.error(`[webhook] DM FAILED:`, dmError);
-    }
 
-    if (automation.dmMessage) {
       await ExecutionLog.create({
         automationId: automation._id,
         commenterId: sender_id,
-        commenterUsername,
+        commenterUsername: commenter_username,
         commentId: comment_id,
         commentText: message,
-        action: "SEND_DM",
+        action: EXECUTION_ACTION.SEND_DM,
         status: dmStatus,
         errorMessage: dmError || undefined,
       });
@@ -405,68 +513,58 @@ async function handleCommentWebhook(change: any, entry: any): Promise<void> {
 }
 
 /**
- * Handle an incoming messaging (DM) webhook event.
- * Extracts sender and message, then triggers matching DM automations.
+ * Handle an incoming DM webhook event.
+ * Logs the incoming message and triggers any matching DM automations.
  */
-async function handleMessagingWebhook(messagingEvent: any, entry: any): Promise<void> {
+async function handleMessagingWebhook(messagingEvent: WebhookMessagingEvent, entry: WebhookEntry): Promise<void> {
+  // Skip echo messages (sent by the IG account itself)
+  if (messagingEvent.message?.is_echo) {
+    console.log("[webhook-dm] Skipping echo message");
+    return;
+  }
+
   const senderId = messagingEvent.sender?.id;
-  const recipientId = messagingEvent.recipient?.id || entry.id;
+  const recipientId = messagingEvent.recipient?.id ?? entry.id;
   const messageText = messagingEvent.message?.text;
 
-  // Ignore echoes (messages sent by the account itself)
-  if (messagingEvent.message?.is_echo) {
-    console.log(`[webhook-dm] Skipping echo message`);
-    return;
-  }
-
   if (!senderId || !messageText) {
-    console.log(`[webhook-dm] Skipping — no sender_id or message text`, JSON.stringify(messagingEvent));
+    console.log("[webhook-dm] Skipping — missing sender or message text");
     return;
   }
 
-  console.log(
-    `[webhook-dm] DM received — sender: ${senderId}, recipient (ig user): ${recipientId}, message: "${messageText}"`
-  );
+  console.log(`[webhook-dm] sender: ${senderId}, recipient: ${recipientId}, text: "${messageText}"`);
 
-  // Find the Instagram account by the recipient's IG user ID
   const igAccount = await InstagramAccount.findOne({ instagramUserId: recipientId });
-  
+
   if (igAccount) {
-    // Log the incoming DM
     await ExecutionLog.create({
       userId: igAccount.userId,
       instagramAccountId: igAccount._id,
       dmSenderId: senderId,
       dmText: messageText,
-      action: "DM_RECEIVED",
-      status: "SUCCESS",
+      action: EXECUTION_ACTION.DM_RECEIVED,
+      status: EXECUTION_STATUS.SUCCESS,
     });
   }
-  
+
   if (!igAccount?.accessToken) {
-    console.log(`[webhook-dm] No IG account found for recipient ${recipientId}`);
+    console.warn(`[webhook-dm] No IG account found for recipient ${recipientId}`);
     return;
   }
 
-  // Find all enabled DM automations for this user
   const automations = await Automation.find({
-    type: "DM",
+    type: AUTOMATION_TYPE.DM,
     enabled: true,
     userId: igAccount.userId,
   });
-  console.log(`[webhook-dm] Found ${automations.length} enabled DM automation(s) for user ${igAccount.userId}`);
+
+  console.log(`[webhook-dm] ${automations.length} enabled DM automation(s) for user ${igAccount.userId}`);
 
   for (const automation of automations) {
-    const hasKeywords = automation.keywords && automation.keywords.length > 0;
+    const hasKeywords = automation.keywords?.length > 0;
     const keywordMatch = hasKeywords
-      ? automation.keywords!.some((kw: string) =>
-          messageText.toLowerCase().includes(kw.toLowerCase())
-        )
-      : true; // No keywords = match all DMs
-
-    console.log(
-      `[webhook-dm] Automation ${automation._id}: keywordMatch=${keywordMatch}, hasKeywords=${hasKeywords} (keywords: [${automation.keywords?.join(", ")}])`
-    );
+      ? automation.keywords.some((kw: string) => messageText.toLowerCase().includes(kw.toLowerCase()))
+      : true;
 
     if (!keywordMatch) {
       console.log(`[webhook-dm] Automation ${automation._id} skipped — no keyword match`);
@@ -475,14 +573,13 @@ async function handleMessagingWebhook(messagingEvent: any, entry: any): Promise<
 
     const replyMessage = automation.dmReplyMessage;
     if (!replyMessage) {
-      console.log(`[webhook-dm] Automation ${automation._id} skipped — no dmReplyMessage configured`);
+      console.log(`[webhook-dm] Automation ${automation._id} skipped — no dmReplyMessage`);
       continue;
     }
 
-    console.log(`[webhook-dm] Automation ${automation._id} matched! Sending reply: "${replyMessage}"`);
-
-    let status: "SUCCESS" | "FAILED" = "SUCCESS";
+    let status: ExecutionStatus = EXECUTION_STATUS.SUCCESS;
     let errorMessage = "";
+
     try {
       await instagramService.sendDMReply(
         igAccount.instagramUserId!,
@@ -490,18 +587,18 @@ async function handleMessagingWebhook(messagingEvent: any, entry: any): Promise<
         replyMessage,
         igAccount.accessToken
       );
-      console.log(`[webhook-dm] DM auto-reply sent successfully`);
+      console.log(`[webhook-dm] Auto-reply sent for automation ${automation._id}`);
     } catch (err) {
-      status = "FAILED";
+      status = EXECUTION_STATUS.FAILED;
       errorMessage = err instanceof Error ? err.message : "Unknown error";
-      console.error(`[webhook-dm] DM auto-reply FAILED:`, errorMessage);
+      console.error(`[webhook-dm] Auto-reply FAILED:`, errorMessage);
     }
 
     await ExecutionLog.create({
       automationId: automation._id,
       dmSenderId: senderId,
       dmText: messageText,
-      action: "DM_AUTO_REPLY",
+      action: EXECUTION_ACTION.DM_AUTO_REPLY,
       status,
       errorMessage: errorMessage || undefined,
     });

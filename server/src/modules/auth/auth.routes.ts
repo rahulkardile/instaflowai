@@ -2,16 +2,10 @@ import { Router } from "express";
 import { z } from "zod";
 import { authMiddleware } from "../../middleware/authMiddleware";
 import { AuthService } from "./auth.service";
-import { registerSchema } from "../../schema/zUserSchema";
+import { registerSchema, loginSchema } from "../../schema/zUserSchema";
 
 const authRoutes = Router();
 const authService = new AuthService();
-
-
-const loginSchema = z.object({
-  email: z.string().trim().email("Enter a valid email"),
-  password: z.string().min(1, "Password is required"),
-});
 
 authRoutes.post("/register", async (req, res) => {
   const parsed = registerSchema.safeParse(req.body);

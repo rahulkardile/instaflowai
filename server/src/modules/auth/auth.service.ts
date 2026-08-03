@@ -1,19 +1,7 @@
 import { User } from "../../models/User";
 import { JwtService } from "../../utils/jwt";
-import { AuthProvider, UserRole } from "../../types/userTypes";
+import { AuthProvider, UserRole, AuthPayload, IUser } from "../../types/userTypes";
 import bcrypt from "bcrypt";
-
-type AuthPayload = {
-  name: string;
-  email: string;
-  role: UserRole;
-  avatar?: string;
-  instagramConnected: boolean;
-  lastLoginAt?: Date;
-  createdAt: Date;
-  updatedAt: Date;
-  id: string;
-};
 
 export class AuthService {
   private async hashPassword(password: string) {
@@ -42,19 +30,9 @@ export class AuthService {
     });
   }
 
-  private sanitizeUser(user: {
-    id: string;
-    name: string;
-    email: string;
-    role: UserRole;
-    avatar?: string;
-    instagramConnected: boolean;
-    lastLoginAt?: Date;
-    createdAt: Date;
-    updatedAt: Date;
-  }): AuthPayload {
+  private sanitizeUser(user: IUser): AuthPayload {
     return {
-      id: user.id,
+      id: (user._id as { toString(): string }).toString(),
       name: user.name,
       email: user.email,
       role: user.role,

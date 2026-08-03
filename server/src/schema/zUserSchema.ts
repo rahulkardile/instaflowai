@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { AuthProvider } from "../types/userTypes";
 
+export const loginSchema = z.object({
+  email: z.string().trim().email("Enter a valid email"),
+  password: z.string().min(1, "Password is required"),
+});
+
 export const registerSchema = z.discriminatedUnion("provider", [
   z.object({
     provider: z.literal(AuthProvider.LOCAL),

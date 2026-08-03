@@ -1,29 +1,44 @@
 import InstagramAccount from "../../models/InstagramAccounts";
 import Reel from "../../models/Reels";
 import { User } from "../../models/User";
+import {
+  IG_GRAPH_API_BASE,
+  IG_OAUTH_BASE_URL,
+  IG_SHORT_TOKEN_URL,
+  IG_LONG_TOKEN_URL,
+  IG_SCOPES,
+  TOKEN_EXPIRY_DAYS,
+  WEBHOOK_SUBSCRIBED_FIELDS,
+  IG_MEDIA_FIELDS,
+} from "../../constants";
+import type {
+  IGShortTokenResponse,
+  IGLongTokenResponse,
+  IGProfileResponse,
+  IGMediaResponse,
+  IGSubscribeResponse,
+  IGApiResponse,
+  MappedReel,
+  IGCommentsResponse,
+  IGPostCommentResponse,
+  IGComment,
+} from "../../types/instagram.types";
 
-const IG_GRAPH_API_BASE = "https://graph.instagram.com/v20.0";
 
 export class InstagramService {
   /**
-   * Build the Facebook OAuth authorization URL.
+   * Build the Instagram OAuth authorization URL.
    */
   getAuthUrl(userId: string): string {
-    const scopes = [
-      "instagram_business_basic",
-      "instagram_business_manage_comments",
-      "instagram_business_manage_messages",
-    ].join(",");
-
     const params = new URLSearchParams({
       client_id: process.env.INSTAGRAM_APP_ID || process.env.FACEBOOK_APP_ID!,
       redirect_uri: process.env.FACEBOOK_REDIRECT_URI!,
-      scope: scopes,
+      scope: IG_SCOPES.join(","),
       response_type: "code",
       state: userId,
     });
 
-    return `https://www.instagram.com/oauth/authorize?${params.toString()}`;
+    return `${IG_OAUTH_BASE_URL}?${params.toString()}`;
   }
 
   /**
@@ -31,187 +46,144 @@ export class InstagramService {
    * persist them, and mark the user as connected.
    */
   async handleCallback(code: string, userId: string): Promise<void> {
-    const clientId = process.env.INSTAGRAM_APP_ID || process.env.FACEBOOK_APP_ID!;
-    const clientSecret = process.env.INSTAGRAM_APP_SECREAT || process.env.FACEBOOK_APP_SECRET!;
+    const clientId = process.env.INSTAGRAM_APP_ID ?? process.env.FACEBOOK_APP_ID!;
+    // Support both spellings: new (INSTAGRAM_APP_SECRET) and old typo (INSTAGRAM_APP_SECREAT) in .env
+    const clientSecret =
+      process.env.INSTAGRAM_APP_SECRET ??
+      process.env.INSTAGRAM_APP_SECREAT ??
+      process.env.FACEBOOK_APP_SECRET!;
     const redirectUri = process.env.FACEBOOK_REDIRECT_URI!;
 
     // 1. Exchange code for short-lived token
-    const formData = new URLSearchParams();
-    formData.append("client_id", clientId);
-    formData.append("client_secret", clientSecret);
-    formData.append("grant_type", "authorization_code");
-    formData.append("redirect_uri", redirectUri);
-    formData.append("code", code);
-
-    const shortTokenRes = await fetch("https://api.instagram.com/oauth/access_token", {
-      method: "POST",
-      body: formData,
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
+    const formData = new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: "authorization_code",
+      redirect_uri: redirectUri,
+      code,
     });
 
-    const shortTokenData = (await shortTokenRes.json()) as {
-      access_token?: string;
-      user_id?: number | string;
-      error_message?: string;
-      error?: { message: string };
-    };
+    const shortTokenRes = await fetch(IG_SHORT_TOKEN_URL, {
+      method: "POST",
+      body: formData,
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    });
+
+    const shortTokenData = (await shortTokenRes.json()) as IGShortTokenResponse;
 
     if (!shortTokenData.access_token) {
       throw new Error(
-        shortTokenData.error_message ||
-        shortTokenData.error?.message ||
-        "Failed to get short-lived token"
+        shortTokenData.error_message ?? shortTokenData.error?.message ?? "Failed to get short-lived token"
       );
     }
 
-    const shortToken = shortTokenData.access_token;
-
-    // 2. Exchange short-lived token for long-lived token
+    // 2. Exchange short-lived token for long-lived token (60-day)
     const longTokenParams = new URLSearchParams({
       grant_type: "ig_exchange_token",
       client_secret: clientSecret,
-      access_token: shortToken,
+      access_token: shortTokenData.access_token,
     });
 
-    const longTokenRes = await fetch(
-      `https://graph.instagram.com/access_token?${longTokenParams.toString()}`
-    );
-    const longTokenData = (await longTokenRes.json()) as {
-      access_token?: string;
-      error?: { message: string };
-    };
+    const longTokenRes = await fetch(`${IG_LONG_TOKEN_URL}?${longTokenParams.toString()}`);
+    const longTokenData = (await longTokenRes.json()) as IGLongTokenResponse;
 
     if (!longTokenData.access_token) {
-      throw new Error(
-        longTokenData.error?.message || "Failed to get long-lived token"
-      );
+      throw new Error(longTokenData.error?.message ?? "Failed to get long-lived token");
     }
 
     const accessToken = longTokenData.access_token;
 
-    // 3. Get Instagram profile (id + username)
-    //    IMPORTANT: We fetch 'id' from the API as a string to avoid JavaScript
-    //    number precision loss on large Instagram user IDs (>2^53).
-    //    The token exchange returns user_id as a number which gets corrupted.
+    // 3. Fetch IG profile (id + username).
+    //    We fetch `id` as a string to avoid JS number precision loss on large IDs (> 2^53).
     const profileRes = await fetch(
       `${IG_GRAPH_API_BASE}/me?fields=id,username&access_token=${accessToken}`
     );
-    const profileData = (await profileRes.json()) as {
-      id?: string;
-      username?: string;
-      error?: { message: string };
-    };
+    const profileData = (await profileRes.json()) as IGProfileResponse;
 
     if (profileData.error) {
       throw new Error(profileData.error.message);
     }
 
-    // Use the string ID from the API, NOT the numeric user_id from token exchange
-    const igUserId = profileData.id || String(shortTokenData.user_id);
-    const username = profileData.username || "";
+    // Prefer string ID from the API; never rely on the numeric user_id from token exchange
+    const igUserId = profileData.id ?? String(shortTokenData.user_id);
+    const username = profileData.username ?? "";
 
-    console.log(`[handleCallback] IG User ID (from API): ${igUserId}, username: ${username}`);
+    console.log(`[handleCallback] IG User ID: ${igUserId}, username: ${username}`);
 
     const tokenExpiresAt = new Date();
-    tokenExpiresAt.setDate(tokenExpiresAt.getDate() + 60);
+    tokenExpiresAt.setDate(tokenExpiresAt.getDate() + TOKEN_EXPIRY_DAYS);
 
-    // 4. Save to database (upsert by userId to avoid duplicates on re-auth)
+    // 4. Upsert Instagram account record
     await InstagramAccount.findOneAndUpdate(
       { userId },
       {
         userId,
         instagramUserId: igUserId,
         username,
-        pageId: "", // pageId is not needed under direct Instagram login
+        pageId: "", // Not required for direct Instagram OAuth
         accessToken,
         tokenExpiresAt,
       },
       { upsert: true, new: true }
     );
 
-    // 5. Mark user connected
+    // 5. Mark user as connected
     await User.findByIdAndUpdate(userId, { instagramConnected: true });
 
-    // 6. Subscribe to webhooks (comments + messages)
+    // 6. Subscribe to webhook fields (comments + messages)
     await this.subscribeToWebhook(igUserId, accessToken);
   }
 
   /**
-   * Subscribe the Instagram account to webhook fields (comments, messages).
-   * This ensures Meta sends webhook events to our callback URL.
+   * Subscribe the Instagram account to webhook fields (comments + messages).
+   * Must be called after the app-level webhook is configured in the Meta Dashboard.
    */
   async subscribeToWebhook(igUserId: string, accessToken: string): Promise<void> {
     try {
       const params = new URLSearchParams({
-        subscribed_fields: "comments,messages",
+        subscribed_fields: WEBHOOK_SUBSCRIBED_FIELDS,
         access_token: accessToken,
       });
-      const subscribeRes = await fetch(
-        `${IG_GRAPH_API_BASE}/${igUserId}/subscribed_apps?${params.toString()}`,
-        {
-          method: "POST",
-        }
-      );
-      const subscribeData = (await subscribeRes.json()) as {
-        success?: boolean;
-        error?: { message: string; code: number };
-      };
-      console.log(`[subscribeToWebhook] Response:`, JSON.stringify(subscribeData));
-      if (subscribeData.error) {
-        console.error(
-          `[subscribeToWebhook] Failed: ${subscribeData.error.message}`
-        );
+
+      const res = await fetch(`${IG_GRAPH_API_BASE}/${igUserId}/subscribed_apps?${params.toString()}`, {
+        method: "POST",
+      });
+
+      const data = (await res.json()) as IGSubscribeResponse;
+
+      if (data.error) {
+        console.error(`[subscribeToWebhook] Failed: ${data.error.message} (code: ${data.error.code})`);
       } else {
-        console.log(`[subscribeToWebhook] Successfully subscribed IG user ${igUserId} to comments + messages`);
+        console.log(`[subscribeToWebhook] Subscribed IG user ${igUserId} to: ${WEBHOOK_SUBSCRIBED_FIELDS}`);
       }
     } catch (err) {
-      console.error(
-        `[subscribeToWebhook] Error:`,
-        err instanceof Error ? err.message : err
-      );
+      console.error(`[subscribeToWebhook] Unexpected error:`, err instanceof Error ? err.message : err);
     }
   }
 
   /**
-   * Fetch the user's Instagram media, filter to Reels, and upsert into the DB.
+   * Fetch the user's Instagram media, upsert each item into the Reel collection,
+   * and return all cached Reels for the user.
    */
-  async fetchAndSyncReels(userId: string) {
+  async fetchAndSyncReels(userId: string): Promise<MappedReel[]> {
     const igAccount = await InstagramAccount.findOne({ userId });
     if (!igAccount) {
       throw new Error("No Instagram account connected");
     }
 
-    // Auto-subscribe/ensure webhook is subscribed on each Reels sync/fetch
+    // Best-effort: re-subscribe to webhooks on each sync (no-op if already subscribed)
     if (igAccount.instagramUserId && igAccount.accessToken) {
-      this.subscribeToWebhook(igAccount.instagramUserId, igAccount.accessToken).catch((e) => {
-        console.error("[fetchAndSyncReels] Auto-subscribe webhook failed:", e);
+      this.subscribeToWebhook(igAccount.instagramUserId, igAccount.accessToken).catch((err) => {
+        console.error("[fetchAndSyncReels] Webhook re-subscription failed:", err);
       });
     }
 
-    const fields =
-      "id,caption,thumbnail_url,permalink,like_count,comments_count,media_type,media_product_type";
+    console.log("[fetchAndSyncReels] Fetching media for IG user:", igAccount.instagramUserId);
 
-    console.log("--- Fetching Instagram Media ---");
-    console.log("Instagram User ID:", igAccount.instagramUserId);
-
-    const mediaRes = await fetch(`${IG_GRAPH_API_BASE}/me/media?fields=${fields}&access_token=${igAccount.accessToken}`);
-    const mediaData = (await mediaRes.json()) as {
-      data?: Array<{
-        id: string;
-        caption?: string;
-        thumbnail_url?: string;
-        permalink?: string;
-        like_count?: number;
-        comments_count?: number;
-        media_type?: string;
-        media_product_type?: string;
-      }>;
-      error?: { message: string; type: string; code: number };
-    };
-
-    console.log("Meta API Response:", JSON.stringify(mediaData, null, 2));
+    const mediaRes = await fetch(
+      `${IG_GRAPH_API_BASE}/me/media?fields=${IG_MEDIA_FIELDS}&access_token=${igAccount.accessToken}`
+    );
+    const mediaData = (await mediaRes.json()) as IGMediaResponse;
 
     if (mediaData.error) {
       throw new Error(mediaData.error.message);
@@ -226,9 +198,9 @@ export class InstagramService {
           userId,
           instagramAccountId: igAccount._id,
           reelId: item.id,
-          caption: item.caption || "",
-          thumbnailUrl: item.thumbnail_url || "",
-          permalink: item.permalink || "",
+          caption: item.caption ?? "",
+          thumbnailUrl: item.thumbnail_url ?? "",
+          permalink: item.permalink ?? "",
           likesCount: item.like_count ?? 0,
           commentsCount: item.comments_count ?? 0,
         },
@@ -236,102 +208,158 @@ export class InstagramService {
       );
     }
 
-    return Reel.find({ userId });
+    const reels = await Reel.find({ userId });
+
+    return reels.map((r) => ({
+      id: (r as any).reelId ?? r._id?.toString(),
+      caption: (r as any).caption,
+      thumbnail_url: (r as any).thumbnailUrl,
+      media_url: undefined,
+      like_count: (r as any).likesCount ?? 0,
+      comments_count: (r as any).commentsCount ?? 0,
+      permalink: (r as any).permalink,
+      timestamp: r.createdAt,
+    }));
   }
 
   /**
    * Reply publicly to a comment on Instagram.
-   * Throws an error if the Graph API returns an error response.
    */
-  async replyToComment(
-    commentId: string,
-    message: string,
-    accessToken: string
-  ): Promise<unknown> {
+  async replyToComment(commentId: string, message: string, accessToken: string): Promise<IGApiResponse> {
     console.log(`[replyToComment] Replying to comment ${commentId}`);
-    const res = await fetch(
-      `${IG_GRAPH_API_BASE}/${commentId}/replies`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, access_token: accessToken }),
-      }
-    );
-    const data = (await res.json()) as { error?: { message: string; code: number } };
+
+    const res = await fetch(`${IG_GRAPH_API_BASE}/${commentId}/replies`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, access_token: accessToken }),
+    });
+
+    const data = (await res.json()) as IGApiResponse;
     console.log(`[replyToComment] Response:`, JSON.stringify(data));
+
     if (data.error) {
       throw new Error(`Graph API error (${data.error.code}): ${data.error.message}`);
     }
+
     return data;
   }
 
   /**
-   * Send a private DM via the Instagram User Messaging endpoint.
-   * Uses instagramUserId (not pageId) — required for direct Instagram OAuth.
-   * Uses comment_id based recipient for the Private Replies API.
-   * Throws an error if the Graph API returns an error response.
+   * Send a private DM via the Instagram Private Reply API.
+   * Uses `comment_id` as the recipient identifier — this opens a DM thread
+   * to the person who left the comment.
    */
   async sendPrivateDM(
     igUserId: string,
     commentId: string,
     message: string,
     accessToken: string
-  ): Promise<unknown> {
+  ): Promise<IGApiResponse> {
     console.log(`[sendPrivateDM] Sending DM to commenter of comment ${commentId} via IG user ${igUserId}`);
-    const res = await fetch(
-      `${IG_GRAPH_API_BASE}/${igUserId}/messages`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          recipient: { comment_id: commentId },
-          message: { text: message },
-          access_token: accessToken,
-        }),
-      }
-    );
-    const data = (await res.json()) as { error?: { message: string; code: number } };
+
+    const res = await fetch(`${IG_GRAPH_API_BASE}/${igUserId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        recipient: { comment_id: commentId },
+        message: { text: message },
+        access_token: accessToken,
+      }),
+    });
+
+    const data = (await res.json()) as IGApiResponse;
     console.log(`[sendPrivateDM] Response:`, JSON.stringify(data));
+
     if (data.error) {
       throw new Error(`Graph API error (${data.error.code}): ${data.error.message}`);
     }
+
     return data;
   }
 
   /**
    * Send a DM reply to an incoming DM sender.
-   * Uses the Instagram Messaging API with the sender's Instagram-scoped ID.
-   * Throws an error if the Graph API returns an error response.
+   * Uses the sender's Instagram-scoped user ID as the recipient.
    */
   async sendDMReply(
     igUserId: string,
     recipientId: string,
     message: string,
     accessToken: string
-  ): Promise<unknown> {
-    console.log(`[sendDMReply] Sending DM reply to ${recipientId} via IG user ${igUserId}`);
-    const res = await fetch(
-      `${IG_GRAPH_API_BASE}/${igUserId}/messages`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          recipient: { id: recipientId },
-          message: { text: message },
-          access_token: accessToken,
-        }),
-      }
-    );
-    const data = (await res.json()) as { error?: { message: string; code: number } };
+  ): Promise<IGApiResponse> {
+    console.log(`[sendDMReply] Replying to ${recipientId} via IG user ${igUserId}`);
+
+    const res = await fetch(`${IG_GRAPH_API_BASE}/${igUserId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        recipient: { id: recipientId },
+        message: { text: message },
+        access_token: accessToken,
+      }),
+    });
+
+    const data = (await res.json()) as IGApiResponse;
     console.log(`[sendDMReply] Response:`, JSON.stringify(data));
+
     if (data.error) {
       throw new Error(`Graph API error (${data.error.code}): ${data.error.message}`);
     }
+
     return data;
   }
 
   /**
-   * Disconnect all Instagram accounts for a user.
+   * Post a new top-level comment on a media object.
+   * Requires the `instagram_business_manage_comments` permission.
+   */
+  async postComment(
+    mediaId: string,
+    message: string,
+    accessToken: string
+  ): Promise<IGPostCommentResponse> {
+    console.log(`[postComment] Posting comment on media ${mediaId}`);
+
+    const res = await fetch(`${IG_GRAPH_API_BASE}/${mediaId}/comments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, access_token: accessToken }),
+    });
+
+    const data = (await res.json()) as IGPostCommentResponse;
+    console.log(`[postComment] Response:`, JSON.stringify(data));
+
+    if (data.error) {
+      throw new Error(`Graph API error (${data.error.code}): ${data.error.message}`);
+    }
+
+    return data;
+  }
+
+  /**
+   * Fetch all top-level comments (+ replies) on a media object.
+   * Returns newest first (Instagram default ordering).
+   */
+  async getComments(mediaId: string, accessToken: string): Promise<IGComment[]> {
+    console.log(`[getComments] Fetching comments for media ${mediaId}`);
+
+    const fields = "id,text,timestamp,username,like_count,replies{id,text,timestamp,username}";
+    const params = new URLSearchParams({ fields, access_token: accessToken });
+
+    const res = await fetch(`${IG_GRAPH_API_BASE}/${mediaId}/comments?${params.toString()}`);
+    const data = (await res.json()) as IGCommentsResponse;
+
+    console.log(`[getComments] Found ${data.data?.length ?? 0} comment(s) for media ${mediaId}`);
+
+    if (data.error) {
+      throw new Error(`Graph API error (${data.error.code}): ${data.error.message}`);
+    }
+
+    return data.data ?? [];
+  }
+
+  /**
+   * Disconnect all Instagram accounts for a user and clear the connected flag.
    */
   async disconnect(userId: string): Promise<void> {
     await InstagramAccount.deleteMany({ userId });
