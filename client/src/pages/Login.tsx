@@ -42,6 +42,7 @@ export default function Login(): JSX.Element {
     setLoading(true);
     try {
       const googleUser = jwtDecode<GoogleUser>(response.credential);
+      console.log({env:ENV});
       const res = await fetch(`${ENV.API_URL}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
