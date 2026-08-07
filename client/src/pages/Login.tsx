@@ -1,5 +1,5 @@
 import { useEffect, useState, type JSX } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { jwtDecode } from "jwt-decode";
 import { ENV } from "../config/env";
 import { auth } from "../utils/auth";
@@ -239,9 +239,9 @@ return (
 
               &
 
-              <span className="ml-1 text-white">
+              <Link to="/privacy-policy" className="ml-1 text-purple-300 hover:text-purple-200 transition-colors" style={{ textDecoration: "underline" }}>
                 Privacy Policy
-              </span>
+              </Link>
 
             </div>
 

@@ -4,12 +4,14 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import Dashboard from "./pages/Dashboard";
 import Landing from "./pages/Landing";
 import Reels from "./pages/Reels";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
 
 export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/" element={<Landing />} />
+      <Route path="/privacy-policy" element={<PrivacyPolicy />} />
       <Route
         path="/dashboard"
         element={

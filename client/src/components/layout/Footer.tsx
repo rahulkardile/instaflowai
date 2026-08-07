@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import Container from "./Container";
 
 export default function Footer() {
@@ -31,8 +32,11 @@ export default function Footer() {
                 InstaFlow pvt limited
               </h3>
               <ul className="mt-4 space-y-2 text-slate-500">
-                <li>About</li>
-                <li>Privacy</li>
+                <li>
+                  <Link to="/privacy-policy" style={{ textDecoration: "none", color: "inherit" }} className="hover:text-white transition-colors">
+                    Privacy
+                  </Link>
+                </li>
                 <li>Terms</li>
               </ul>
             </div>
