@@ -10,10 +10,6 @@ import type { AuthSession } from "../types/AuthUser";
 import { QUERY_KEYS, CACHE, API, TABS, LOG, type TabId } from "../constants";
 import { useTheme } from "../hooks/useTheme";
 
-/* ──────────────────────────────────────────────────────────────────── */
-/*  Types                                                               */
-/* ──────────────────────────────────────────────────────────────────── */
-
 interface Reel {
   id: string;
   caption?: string;
@@ -87,8 +83,8 @@ function ToastContainer({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id
             exit={{ opacity: 0, scale: 0.96, y: 6 }}
             transition={{ duration: 0.22, ease: [0.25, 0.46, 0.45, 0.94] }}
             className={`pointer-events-auto flex items-center gap-3 rounded-[16px] border px-4 py-3 text-[13px] font-medium shadow-[0_4px_16px_rgba(0,0,0,0.10)] backdrop-blur-xl dark:bg-[#111114] dark:border-white/[0.1] ${t.type === "success"
-                ? "border-green-200/60 bg-white text-green-800 dark:text-green-300"
-                : "border-red-200/60 bg-white text-red-800 dark:text-red-300"
+              ? "border-green-200/60 bg-white text-green-800 dark:text-green-300"
+              : "border-red-200/60 bg-white text-red-800 dark:text-red-300"
               }`}
           >
             {t.type === "success" ? (
@@ -465,12 +461,12 @@ export default function Dashboard() {
 
         {/* Logo */}
         <div className="flex h-16 items-center gap-2.5 border-b border-black/[0.05] px-5 dark:border-white/[0.05]">
-          <div
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] text-[11px] font-black text-white"
-            style={{ background: "linear-gradient(135deg, #7c3aed, #ec4899)" }}
-          >
-            IF
-          </div>
+          <img
+            src="/instaFlow-icon.png"
+            alt="InstaFlow Logo"
+            className="h-8 w-8 shrink-0 rounded-[10px] object-cover"
+          />
+
           <span className="text-[14px] font-semibold tracking-tight text-[#111111] dark:text-white">InstaFlow</span>
         </div>
 
@@ -488,8 +484,8 @@ export default function Dashboard() {
                 id={`tab-${item.id}`}
                 onClick={() => setActiveTab(item.id)}
                 className={`group flex w-full items-center gap-3 rounded-[12px] px-3 py-2.5 text-left transition-all duration-150 ${activeTab === item.id
-                    ? "bg-violet-50 text-[#7c3aed] dark:bg-violet-950/40 dark:text-violet-300"
-                    : "text-[#71717a] hover:bg-[#f4f4f5] hover:text-[#111111] dark:text-[#a1a1aa] dark:hover:bg-white/5 dark:hover:text-white"
+                  ? "bg-violet-50 text-[#7c3aed] dark:bg-violet-950/40 dark:text-violet-300"
+                  : "text-[#71717a] hover:bg-[#f4f4f5] hover:text-[#111111] dark:text-[#a1a1aa] dark:hover:bg-white/5 dark:hover:text-white"
                   }`}
               >
                 <span className={activeTab === item.id ? "text-[#7c3aed] dark:text-violet-400" : "text-[#a1a1aa] group-hover:text-[#71717a] dark:text-[#71717a]"}>
@@ -499,8 +495,8 @@ export default function Dashboard() {
                 {item.count !== undefined && item.count > 0 && (
                   <span
                     className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${activeTab === item.id
-                        ? "bg-violet-100 text-violet-700 dark:bg-violet-900/50 dark:text-violet-300"
-                        : "bg-[#f4f4f5] text-[#71717a] dark:bg-white/10 dark:text-[#a1a1aa]"
+                      ? "bg-violet-100 text-violet-700 dark:bg-violet-900/50 dark:text-violet-300"
+                      : "bg-[#f4f4f5] text-[#71717a] dark:bg-white/10 dark:text-[#a1a1aa]"
                       }`}
                   >
                     {item.count}
@@ -943,8 +939,8 @@ export default function Dashboard() {
                             <div key={log._id} className={`flex flex-col ${isOutgoing ? "items-end" : "items-start"}`}>
                               <div
                                 className={`max-w-[70%] rounded-[16px] px-4 py-2.5 text-[13px] leading-[1.5] ${isOutgoing
-                                    ? "rounded-br-sm text-white"
-                                    : "rounded-bl-sm bg-[#f4f4f5] text-[#111111] dark:bg-white/10 dark:text-white"
+                                  ? "rounded-br-sm text-white"
+                                  : "rounded-bl-sm bg-[#f4f4f5] text-[#111111] dark:bg-white/10 dark:text-white"
                                   }`}
                                 style={isOutgoing ? { background: "linear-gradient(135deg, #7c3aed, #ec4899)" } : {}}
                               >
@@ -1184,8 +1180,8 @@ function ReelCard({ reel, hasAutomation, onAutomate }: {
           id={`automate-reel-${reel.id}`}
           onClick={onAutomate}
           className={`mt-3 flex w-full items-center justify-center gap-1.5 rounded-[12px] py-2.5 text-[12px] font-semibold transition-all hover:opacity-90 active:scale-[0.98] ${hasAutomation
-              ? "border border-black/[0.08] bg-white text-[#111111] dark:border-white/[0.1] dark:bg-white/5 dark:text-white"
-              : "text-white"
+            ? "border border-black/[0.08] bg-white text-[#111111] dark:border-white/[0.1] dark:bg-white/5 dark:text-white"
+            : "text-white"
             }`}
           style={!hasAutomation ? { background: "linear-gradient(135deg, #7c3aed, #ec4899)" } : {}}
         >
@@ -1380,8 +1376,8 @@ function StatusBadge({ status }: { status: "SUCCESS" | "FAILED" }) {
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${status === "SUCCESS"
-          ? "bg-green-50 text-green-700 dark:bg-green-950/40 dark:text-green-300"
-          : "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300"
+        ? "bg-green-50 text-green-700 dark:bg-green-950/40 dark:text-green-300"
+        : "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300"
         }`}
     >
       {status === "SUCCESS" ? <Check size={10} /> : <AlertCircle size={10} />}

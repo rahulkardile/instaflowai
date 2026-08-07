@@ -96,12 +96,12 @@ export default function Login(): JSX.Element {
         {/* Logo */}
         <div>
           <div className="flex items-center gap-2.5">
-            <div
-              className="flex h-9 w-9 items-center justify-center rounded-[11px] text-[13px] font-black text-white"
-              style={{ background: "linear-gradient(135deg, #7c3aed, #ec4899)" }}
-            >
-              IF
-            </div>
+            <img
+              src="/instaFlow-icon.png"
+              alt="InstaFlow Logo"
+              className="h-9 w-9 rounded-[11px] object-cover"
+            />
+
             <span className="text-[15px] font-semibold text-white">InstaFlow</span>
           </div>
         </div>
@@ -156,12 +156,12 @@ export default function Login(): JSX.Element {
         >
           {/* Logo (desktop hidden — it's on left panel) */}
           <div className="mb-8 flex items-center gap-2.5 lg:hidden">
-            <div
-              className="flex h-9 w-9 items-center justify-center rounded-[11px] text-[13px] font-black text-white"
-              style={{ background: "linear-gradient(135deg, #7c3aed, #ec4899)" }}
-            >
-              IF
-            </div>
+            <img
+              src="/instaFlow-icon.png"
+              alt="InstaFlow Logo"
+              className="h-9 w-9 rounded-[11px] object-cover"
+            />
+
             <span className="text-[15px] font-semibold text-[#111111]">InstaFlow</span>
           </div>
 

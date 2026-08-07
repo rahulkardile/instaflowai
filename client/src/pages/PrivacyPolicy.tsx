@@ -106,12 +106,12 @@ export default function PrivacyPolicy() {
       <header className="sticky top-0 z-30 border-b border-black/[0.06] bg-white/80 backdrop-blur-xl transition-colors dark:border-white/[0.06] dark:bg-[#09090b]/80">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
           <Link to={ROUTES.HOME} className="flex items-center gap-2.5 no-underline">
-            <div
-              className="flex h-8 w-8 items-center justify-center rounded-[10px] text-xs font-black text-white"
-              style={{ background: "linear-gradient(135deg, #7c3aed, #ec4899)" }}
-            >
-              IF
-            </div>
+            <img
+              src="/instaFlow-icon.png"
+              alt="InstaFlow Logo"
+              className="h-8 w-8 rounded-[10px] object-cover"
+            />
+
             <span className="text-[15px] font-semibold tracking-tight text-[#111111] dark:text-white">
               {APP.NAME}
             </span>

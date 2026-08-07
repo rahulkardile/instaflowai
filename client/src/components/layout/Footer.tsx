@@ -25,12 +25,12 @@ export default function Footer() {
             {/* Brand */}
             <div className="flex-1">
               <div className="flex items-center gap-2.5">
-                <div
-                  className="flex h-8 w-8 items-center justify-center rounded-[10px] text-xs font-black text-white"
-                  style={{ background: "linear-gradient(135deg, #7c3aed, #ec4899)" }}
-                >
-                  IF
-                </div>
+                <img
+                  src="/instaFlow-icon.png"
+                  alt="InstaFlow Logo"
+                  className="h-8 w-8 rounded-[10px] object-cover"
+                />
+
                 <span className="text-[15px] font-semibold tracking-tight text-[#111111]">
                   InstaFlow
                 </span>

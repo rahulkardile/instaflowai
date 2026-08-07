@@ -12,10 +12,11 @@ const fadeUp = {
 };
 
 const stats = [
-  { value: "< 1s", label: "Response time" },
-  { value: "24/7", label: "Auto-monitoring" },
-  { value: "100%", label: "Meta API compliant" },
+  { value: "v21.0", label: "Meta Graph API" },
+  { value: "< 500ms", label: "Execution speed" },
+  { value: "Real-time", label: "Webhook sync" },
 ];
+
 
 
 const automationSteps = [
