@@ -1,5 +1,7 @@
 // ─── Instagram Graph API ───────────────────────────────────────────────────
+export const META_API_VERSION = "v21.0" as const;
 export const IG_GRAPH_API_BASE = "https://graph.instagram.com/v21.0" as const;
+
 export const IG_OAUTH_BASE_URL = "https://www.instagram.com/oauth/authorize" as const;
 export const IG_SHORT_TOKEN_URL = "https://api.instagram.com/oauth/access_token" as const;
 export const IG_LONG_TOKEN_URL = "https://graph.instagram.com/access_token" as const;
