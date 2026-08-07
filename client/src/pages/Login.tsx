@@ -3,6 +3,8 @@ import { useNavigate, Link } from "react-router-dom";
 import { jwtDecode } from "jwt-decode";
 import { ENV } from "../config/env";
 import { auth } from "../utils/auth";
+import { ArrowLeft, Zap, MessageCircle, Send } from "lucide-react";
+import { motion } from "framer-motion";
 
 interface GoogleCredentialResponse {
   credential?: string;
@@ -19,34 +21,30 @@ interface GoogleUser {
   email_verified?: boolean;
 }
 
+const leftFeatures = [
+  { icon: Zap, text: "Instant comment replies" },
+  { icon: MessageCircle, text: "Keyword-triggered automations" },
+  { icon: Send, text: "Personalized DM campaigns" },
+];
+
 export default function Login(): JSX.Element {
   const navigate = useNavigate();
-
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (auth.isAuthenticated()) {
-      navigate("/dashboard", {
-        replace: true,
-      });
-
-      return;
+      navigate("/dashboard", { replace: true });
     }
   }, []);
 
   const handleCredentialLogin = async (response: GoogleCredentialResponse) => {
     if (!response.credential) return;
-
     setLoading(true);
-
     try {
       const googleUser = jwtDecode<GoogleUser>(response.credential);
-
       const res = await fetch(`${ENV.API_URL}/auth/register`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           provider: "google",
           providerId: googleUser.sub,
@@ -59,23 +57,13 @@ export default function Login(): JSX.Element {
           emailVerified: googleUser.email_verified,
         }),
       });
-
       const result = await res.json();
-
-      if (!result.success) {
-        throw new Error(result.message);
-      }
-
-      auth.save({
-        isLogin: true,
-        token: result.data.token,
-        user: result.data.user,
-      });
-
+      if (!result.success) throw new Error(result.message);
+      auth.save({ isLogin: true, token: result.data.token, user: result.data.user });
       navigate("/dashboard");
     } catch (err) {
       console.error(err);
-      alert("Google Sign In Failed");
+      alert("Sign in failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -83,210 +71,137 @@ export default function Login(): JSX.Element {
 
   useEffect(() => {
     if (!window.google) return;
-
     window.google.accounts.id.initialize({
       client_id: ENV.GOOGLE_CLIENT_ID,
       callback: handleCredentialLogin,
     });
-
     const buttonDiv = document.getElementById("googleSignInDiv");
-
     if (buttonDiv) {
       window.google.accounts.id.renderButton(buttonDiv, {
         type: "standard",
         theme: "outline",
         size: "large",
-        shape: "pill",
+        shape: "rectangular",
         width: 320,
+        text: "continue_with",
       });
     }
   }, []);
 
-return (
-  <div className="relative min-h-screen overflow-hidden bg-slate-950">
+  return (
+    <div className="flex min-h-screen bg-[#fafafb]">
 
-    {/* Background */}
-
-    <div className="absolute -left-32 top-0 h-96 w-96 rounded-full bg-purple-600/20 blur-[140px]" />
-
-    <div className="absolute right-0 bottom-0 h-[500px] w-[500px] rounded-full bg-pink-500/15 blur-[160px]" />
-
-    <div className="relative mx-auto flex min-h-screen max-w-7xl items-center px-6">
-
-      <div className="grid w-full items-center gap-20 lg:grid-cols-2">
-
-        {/* Left */}
-
+      {/* Left panel — brand */}
+      <div className="hidden flex-col justify-between bg-[#09090b] p-12 lg:flex lg:w-[480px]">
+        {/* Logo */}
         <div>
-
-          <div className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-purple-300 backdrop-blur">
-            🚀 AI Powered Instagram Automation
+          <div className="flex items-center gap-2.5">
+            <div
+              className="flex h-9 w-9 items-center justify-center rounded-[11px] text-[13px] font-black text-white"
+              style={{ background: "linear-gradient(135deg, #7c3aed, #ec4899)" }}
+            >
+              IF
+            </div>
+            <span className="text-[15px] font-semibold text-white">InstaFlow</span>
           </div>
+        </div>
 
-          <h1 className="mt-8 text-6xl font-black leading-tight text-white">
-
-            Turn Instagram
+        {/* Middle — headline + features */}
+        <div>
+          <h2 className="text-[36px] font-black leading-[1.1] tracking-[-0.03em] text-white">
+            Your Instagram,
             <br />
-
-            <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-orange-300 bg-clip-text text-transparent">
-              Comments Into Customers
-            </span>
-
-          </h1>
-
-          <p className="mt-8 max-w-xl text-xl leading-9 text-slate-300">
-
-            Automatically reply to comments,
-            send personalized DMs,
-            capture leads,
-            and grow your business while you sleep.
-
+            on autopilot.
+          </h2>
+          <p className="mt-4 text-[15px] leading-[1.7] text-white/50">
+            Automate comment replies and DMs while you focus on creating.
           </p>
-
-          <div className="mt-12 space-y-5">
-
-            <div className="flex items-center gap-3 text-slate-200">
-
-              <div className="h-2 w-2 rounded-full bg-green-400" />
-
-              AI Generated Replies
-
-            </div>
-
-            <div className="flex items-center gap-3 text-slate-200">
-
-              <div className="h-2 w-2 rounded-full bg-green-400" />
-
-              Auto DM Every Customer
-
-            </div>
-
-            <div className="flex items-center gap-3 text-slate-200">
-
-              <div className="h-2 w-2 rounded-full bg-green-400" />
-
-              Keyword Based Automation
-
-            </div>
-
-            <div className="flex items-center gap-3 text-slate-200">
-
-              <div className="h-2 w-2 rounded-full bg-green-400" />
-
-              Analytics & Performance Tracking
-
-            </div>
-
-          </div>
-
-        </div>
-
-        {/* Right */}
-
-        <div className="relative">
-
-          <div className="rounded-3xl border border-white/10 bg-white/10 p-10 shadow-2xl backdrop-blur-xl">
-
-            <div className="mb-8 text-center">
-
-              <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-r from-purple-600 to-pink-500 text-2xl font-bold text-white">
-
-                IF
-
-              </div>
-
-              <h2 className="text-3xl font-bold text-white">
-
-                Welcome to InstaFlow
-
-              </h2>
-
-              <p className="mt-3 text-slate-300">
-
-                Continue with Google to manage your Instagram automations.
-
-              </p>
-
-            </div>
-
-            <div className="flex justify-center">
-
-              <div id="googleSignInDiv" />
-
-            </div>
-
-            {loading && (
-
-              <div className="mt-8 flex justify-center">
-
-                <div className="rounded-xl bg-purple-500/20 px-5 py-3 text-purple-200">
-
-                  Signing you in...
-
+          <ul className="mt-8 space-y-3">
+            {leftFeatures.map(({ icon: Icon, text }) => (
+              <li key={text} className="flex items-center gap-3">
+                <div className="flex h-7 w-7 items-center justify-center rounded-[8px] bg-white/8">
+                  <Icon size={13} className="text-white/70" />
                 </div>
-
-              </div>
-
-            )}
-
-            <div className="mt-10 border-t border-white/10 pt-6 text-center text-sm text-slate-400">
-
-              By continuing you agree to our
-
-              <span className="mx-1 text-white">
-                Terms
-              </span>
-
-              &
-
-              <Link to="/privacy-policy" className="ml-1 text-purple-300 hover:text-purple-200 transition-colors" style={{ textDecoration: "underline" }}>
-                Privacy Policy
-              </Link>
-
-            </div>
-
-          </div>
-
-          {/* Floating cards */}
-
-          <div className="absolute -left-10 top-10 hidden rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur lg:block">
-
-            <p className="text-xs text-slate-400">
-
-              New Comment
-
-            </p>
-
-            <p className="mt-1 font-semibold text-white">
-
-              "Price?"
-
-            </p>
-
-          </div>
-
-          <div className="absolute -right-10 bottom-10 hidden rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur lg:block">
-
-            <p className="text-xs text-slate-400">
-
-              AI Action
-
-            </p>
-
-            <p className="mt-1 font-semibold text-green-300">
-
-              DM Sent ✓
-
-            </p>
-
-          </div>
-
+                <span className="text-[13px] text-white/70">{text}</span>
+              </li>
+            ))}
+          </ul>
         </div>
 
+        {/* Bottom — legal */}
+        <p className="text-[12px] text-white/30">
+          © {new Date().getFullYear()} InstaFlow Pvt Limited
+        </p>
       </div>
 
-    </div>
+      {/* Right panel — login form */}
+      <div className="flex flex-1 flex-col items-center justify-center px-6 py-16">
 
-  </div>
-);
+        {/* Back link (mobile) */}
+        <div className="mb-12 w-full max-w-sm lg:hidden">
+          <Link
+            to="/"
+            className="inline-flex items-center gap-1.5 text-[13px] text-[#71717a] no-underline transition-colors hover:text-[#111111]"
+          >
+            <ArrowLeft size={13} />
+            Back to home
+          </Link>
+        </div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }}
+          className="w-full max-w-sm"
+        >
+          {/* Logo (desktop hidden — it's on left panel) */}
+          <div className="mb-8 flex items-center gap-2.5 lg:hidden">
+            <div
+              className="flex h-9 w-9 items-center justify-center rounded-[11px] text-[13px] font-black text-white"
+              style={{ background: "linear-gradient(135deg, #7c3aed, #ec4899)" }}
+            >
+              IF
+            </div>
+            <span className="text-[15px] font-semibold text-[#111111]">InstaFlow</span>
+          </div>
+
+          <h1 className="text-[28px] font-black tracking-[-0.025em] text-[#111111]">
+            Welcome back
+          </h1>
+          <p className="mt-2 text-[14px] text-[#71717a]">
+            Sign in to manage your Instagram automations.
+          </p>
+
+          {/* Google sign-in button */}
+          <div className="mt-8">
+            <div id="googleSignInDiv" className="flex justify-start" />
+          </div>
+
+          {loading && (
+            <div className="mt-6 flex items-center gap-2 rounded-[14px] border border-black/[0.06] bg-white px-4 py-3 text-[13px] text-[#71717a] shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+              <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#7c3aed]/20 border-t-[#7c3aed]" />
+              Signing you in…
+            </div>
+          )}
+
+          {/* Legal */}
+          <p className="mt-8 text-[12px] leading-[1.6] text-[#a1a1aa]">
+            By continuing, you agree to our{" "}
+            <a href="#" className="underline decoration-[#a1a1aa]/50 underline-offset-2 hover:text-[#71717a]">
+              Terms of Service
+            </a>{" "}
+            and{" "}
+            <Link
+              to="/privacy-policy"
+              className="underline decoration-[#a1a1aa]/50 underline-offset-2 no-underline hover:text-[#71717a]"
+              style={{ textDecoration: "underline" }}
+            >
+              Privacy Policy
+            </Link>
+            .
+          </p>
+        </motion.div>
+      </div>
+    </div>
+  );
 }

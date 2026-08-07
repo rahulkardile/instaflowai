@@ -1,19 +1,24 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import Container from "./Container";
 import { auth } from "../../utils/auth";
 import api from "../../utils/api";
-import { LogOut, LayoutDashboard, Loader2, Camera, Film } from "lucide-react";
+import { Loader2, Camera } from "lucide-react";
 
 export default function Header() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [scrolled, setScrolled] = useState(false);
   const [connectingIG, setConnectingIG] = useState(false);
 
   const session = auth.get();
   const user = session?.user;
-
   const authenticated = auth.isAuthenticated();
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 16);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   const logout = () => {
     auth.logout();
@@ -25,162 +30,130 @@ export default function Header() {
     try {
       const { data } = await api.get("/instagram/auth");
       window.location.href = data.data.url;
-    } catch (err) {
-      console.error("Failed to start Instagram auth:", err);
+    } catch {
       setConnectingIG(false);
     }
   };
 
   const isLanding =
-    location.pathname === "/" ||
-    location.pathname === "/about";
+    location.pathname === "/" || location.pathname === "/about";
 
   return (
-    <header className="sticky top-0 z-50 border-b border-slate-200/70 bg-white/80 backdrop-blur-xl">
-      <Container>
-        <div className="flex h-18 items-center justify-between">
+    <div className="fixed top-0 left-0 right-0 z-50 flex justify-center px-4 pt-4">
+      <header
+        className={`w-full max-w-6xl transition-all duration-300 ${
+          scrolled
+            ? "rounded-2xl bg-white/95 shadow-[0_2px_20px_rgba(0,0,0,0.08)] backdrop-blur-xl"
+            : "rounded-2xl bg-white/80 shadow-[0_1px_8px_rgba(0,0,0,0.05)] backdrop-blur-md"
+        } border border-black/[0.06]`}
+      >
+        <div className="flex h-14 items-center justify-between px-5">
 
           {/* Logo */}
-
-          <Link to={authenticated ? "/dashboard" : "/"} className="flex items-center gap-3">
-
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-r from-purple-600 to-pink-500 text-lg font-bold text-white shadow-lg">
+          <Link
+            to={authenticated ? "/dashboard" : "/"}
+            className="flex items-center gap-2.5 no-underline"
+          >
+            <div
+              className="flex h-8 w-8 items-center justify-center rounded-[10px] text-xs font-black text-white"
+              style={{ background: "linear-gradient(135deg, #7c3aed, #ec4899)" }}
+            >
               IF
             </div>
-
-            <div>
-
-              <p className="text-lg font-bold text-slate-900">
-                InstaFlow
-              </p>
-
-              <p className="text-xs text-slate-500">
-                Instagram Automation
-              </p>
-
-            </div>
-
+            <span className="text-[15px] font-semibold tracking-tight text-[#111111]">
+              InstaFlow
+            </span>
           </Link>
 
-          {/* Navigation */}
-
+          {/* Nav — landing only, unauthenticated */}
           {!authenticated && isLanding && (
-            <nav className="hidden items-center gap-8 text-sm font-medium text-slate-600 md:flex">
-
-              <a href="#features" className="hover:text-purple-600">
-                Features
-              </a>
-
-              <a href="#pricing" className="hover:text-purple-600">
-                Pricing
-              </a>
-
-              <Link
-                to="/about"
-                className="hover:text-purple-600"
-              >
-                About
-              </Link>
-
-              <a href="#faq" className="hover:text-purple-600">
-                FAQ
-              </a>
-
+            <nav className="hidden items-center gap-1 md:flex">
+              {[
+                { href: "#features", label: "Features" },
+                { href: "#how-it-works", label: "How it works" },
+                { href: "#faq", label: "FAQ" },
+              ].map((item) => (
+                <a
+                  key={item.label}
+                  href={item.href}
+                  className="rounded-[10px] px-3 py-2 text-[13px] font-medium text-[#71717a] transition-colors hover:bg-black/[0.04] hover:text-[#111111] no-underline"
+                >
+                  {item.label}
+                </a>
+              ))}
             </nav>
           )}
 
-          {/* Right Side */}
-
-          {!authenticated ? (
-            <div className="flex items-center gap-3">
-
-              <Link
-                to="/login"
-                className="rounded-xl px-4 py-2 font-medium text-slate-700 transition hover:bg-slate-100"
-              >
-                Login
-              </Link>
-
-              <Link
-                to="/login"
-                className="rounded-xl bg-gradient-to-r from-purple-600 to-pink-500 px-5 py-2.5 font-semibold text-white shadow-lg transition hover:scale-105"
-              >
-                Start Free
-              </Link>
-
-            </div>
-          ) : (
-            <div className="flex items-center gap-4">
-
-              <Link
-                to="/dashboard"
-                className={`flex items-center gap-2 rounded-xl px-4 py-2 text-slate-700 transition hover:bg-slate-100 ${
-                  location.pathname === "/dashboard" ? "bg-purple-50 text-purple-700 font-semibold" : ""
-                }`}
-              >
-                <LayoutDashboard size={18} />
-                Dashboard
-              </Link>
-
-              <Link
-                to="/reels"
-                className={`flex items-center gap-2 rounded-xl px-4 py-2 text-slate-700 transition hover:bg-slate-100 ${
-                  location.pathname === "/reels" ? "bg-purple-50 text-purple-700 font-semibold" : ""
-                }`}
-              >
-                <Film size={18} />
-                Reels
-              </Link>
-
-              {!user?.instagramConnected && (
-                <button
-                  onClick={handleConnectInstagram}
-                  disabled={connectingIG}
-                  className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-500 px-5 py-2.5 font-semibold text-white shadow-lg transition hover:scale-105 disabled:opacity-60 disabled:hover:scale-100"
+          {/* Right side */}
+          <div className="flex items-center gap-2">
+            {!authenticated ? (
+              <>
+                <Link
+                  to="/login"
+                  className="hidden rounded-[10px] px-3 py-2 text-[13px] font-medium text-[#71717a] transition-colors hover:bg-black/[0.04] hover:text-[#111111] no-underline sm:block"
                 >
-                  {connectingIG ? (
-                    <Loader2 size={18} className="animate-spin" />
+                  Sign in
+                </Link>
+                <Link
+                  to="/login"
+                  className="rounded-[14px] px-4 py-2 text-[13px] font-semibold text-white no-underline transition-all hover:opacity-90 hover:shadow-md active:scale-[0.98]"
+                  style={{ background: "linear-gradient(135deg, #7c3aed, #ec4899)" }}
+                >
+                  Get started
+                </Link>
+              </>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Link
+                  to="/dashboard"
+                  className={`rounded-[10px] px-3 py-2 text-[13px] font-medium no-underline transition-colors ${
+                    location.pathname === "/dashboard"
+                      ? "bg-violet-50 text-violet-700"
+                      : "text-[#71717a] hover:bg-black/[0.04] hover:text-[#111111]"
+                  }`}
+                >
+                  Dashboard
+                </Link>
+
+                {!user?.instagramConnected && (
+                  <button
+                    onClick={handleConnectInstagram}
+                    disabled={connectingIG}
+                    className="flex items-center gap-1.5 rounded-[14px] px-3.5 py-2 text-[13px] font-semibold text-white transition-all hover:opacity-90 disabled:opacity-60"
+                    style={{ background: "linear-gradient(135deg, #7c3aed, #ec4899)" }}
+                  >
+                    {connectingIG ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <Camera size={14} />
+                    )}
+                    {connectingIG ? "Connecting…" : "Connect IG"}
+                  </button>
+                )}
+
+                <button
+                  onClick={logout}
+                  className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full ring-2 ring-transparent transition hover:ring-violet-200"
+                  aria-label="Profile menu"
+                >
+                  {user?.avatar ? (
+                    <img
+                      src={user.avatar}
+                      alt={user.name}
+                      className="h-full w-full object-cover"
+                    />
                   ) : (
-                    <Camera size={18} />
+                    <div className="flex h-full w-full items-center justify-center bg-violet-100 text-xs font-bold text-violet-700">
+                      {user?.name?.[0]}
+                    </div>
                   )}
-                  {connectingIG ? "Connecting…" : "Connect Instagram"}
                 </button>
-              )}
-
-              <div className="flex items-center gap-3 rounded-2xl border bg-white px-3 py-2 shadow-sm">
-
-                <img
-                  src={user?.avatar}
-                  alt={user?.name}
-                  className="h-10 w-10 rounded-full border object-cover"
-                />
-
-                <div className="hidden text-left lg:block">
-
-                  <p className="font-semibold text-slate-900">
-                    {user?.name}
-                  </p>
-
-                  <p className="text-xs text-slate-500">
-                    {user?.email}
-                  </p>
-
-                </div>
-
               </div>
-
-              <button
-                onClick={logout}
-                className="rounded-xl p-3 text-slate-600 transition hover:bg-red-50 hover:text-red-600"
-              >
-                <LogOut size={20} />
-              </button>
-
-            </div>
-          )}
+            )}
+          </div>
 
         </div>
-      </Container>
-    </header>
+      </header>
+    </div>
   );
 }

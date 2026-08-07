@@ -18,7 +18,7 @@ export default function Landing() {
 
       <HowItWorks />
 
-      <Pricing />
+      {/* <Pricing /> */}
 
       <FAQ />
 
