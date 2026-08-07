@@ -238,7 +238,8 @@ instagramRoutes.post("/comment", authMiddleware, async (req: Request, res: Respo
  */
 instagramRoutes.get("/comments/:mediaId", authMiddleware, async (req: Request, res: Response) => {
   try {
-    const { mediaId } = req.params;
+    const mediaIdParam = req.params.mediaId;
+    const mediaId = Array.isArray(mediaIdParam) ? mediaIdParam[0] : mediaIdParam;
 
     const igAccount = await InstagramAccount.findOne({ userId: req.user!.userId });
     if (!igAccount?.accessToken) {
@@ -247,6 +248,8 @@ instagramRoutes.get("/comments/:mediaId", authMiddleware, async (req: Request, r
     }
 
     const comments = await instagramService.getComments(mediaId, igAccount.accessToken);
+
+
     const response: ApiResponse = { success: true, data: { mediaId, count: comments.length, comments } };
     return res.status(200).json(response);
   } catch (error) {

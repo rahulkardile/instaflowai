@@ -1,15 +1,16 @@
 import { Link } from "react-router-dom";
 import { ArrowRight, MessageCircle, Send, Zap, CheckCircle2 } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, type Variants } from "framer-motion";
 
-const fadeUp = {
+const fadeUp: Variants = {
   hidden: { opacity: 0, y: 24 },
-  show: (i: number) => ({
+  show: (i: number = 0) => ({
     opacity: 1,
     y: 0,
-    transition: { duration: 0.5, ease: [0.25, 0.46, 0.45, 0.94], delay: i * 0.1 },
+    transition: { duration: 0.5, ease: [0.25, 0.46, 0.45, 0.94] as const, delay: i * 0.1 },
   }),
 };
+
 
 const stats = [
   { value: "v21.0", label: "Meta Graph API" },

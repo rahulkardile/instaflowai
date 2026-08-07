@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Shield, ArrowLeft, Sun, Moon, Check, Mail, ExternalLink } from "lucide-react";
+import { Shield, ArrowLeft, Sun, Moon, Check, Mail } from "lucide-react";
+
 import { APP, ROUTES } from "../constants";
 import { useTheme } from "../hooks/useTheme";
 
