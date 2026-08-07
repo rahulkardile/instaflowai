@@ -12,10 +12,11 @@ const fadeUp = {
 };
 
 const stats = [
-  { value: "2,400+", label: "Businesses" },
-  { value: "1.2M+", label: "Messages sent" },
-  { value: "99.9%", label: "Uptime" },
+  { value: "< 1s", label: "Response time" },
+  { value: "24/7", label: "Auto-monitoring" },
+  { value: "100%", label: "Meta API compliant" },
 ];
+
 
 const automationSteps = [
   {

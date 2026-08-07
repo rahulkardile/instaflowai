@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 /* ── Design tokens ─────────────────────────────────────────────────── */
 :root {
@@ -36,6 +37,17 @@
   --radius-modal: 28px;
 }
 
+html.dark {
+  --bg: #09090b;
+  --bg-card: #111114;
+  --bg-subtle: #18181b;
+  --text: #fafafa;
+  --text-2: #a1a1aa;
+  --text-3: #71717a;
+  --border: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.12);
+}
+
 /* ── Reset & base ───────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 
@@ -53,6 +65,7 @@ body {
   color: var(--text);
   font-size: 15px;
   line-height: 1.6;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 /* ── Reduced motion ─────────────────────────────────────────────────── */
@@ -70,6 +83,9 @@ body {
 ::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.10);
   border-radius: 3px;
+}
+html.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
 }
 ::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.18); }
 
