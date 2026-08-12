@@ -10,10 +10,19 @@ import { automationRoutes } from "./modules/automation/automation.routes";
 
 const app = express();
 dotenv.config();
-console.log(process.env.CLIENT_URL);
+const allowedOrigins = process.env.CLIENT_URL ? process.env.CLIENT_URL.split(",").map((url) => url.trim().replace(/\/$/, "")) : ["http://localhost:5173"];
+
 app.use(
   cors({
-    origin: process.env.CLIENT_URL?.replace(/\/$/, "") || "http://localhost:5173",
+    origin: (origin, callback) => {
+      if (!origin) {
+        return callback(null, true);
+      }
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error(`CORS blocked: ${origin}`));
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
