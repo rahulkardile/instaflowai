@@ -13,9 +13,20 @@ import {
   AUTOMATION_TYPE,
   WEBHOOK_FIELD,
 } from "../../constants";
+import { cache, CACHE_KEY, CACHE_TTL } from "../../utils/cache";
 import type { ApiResponse } from "../../types/common.types";
 import type { MappedReel, WebhookEntry, WebhookChange, WebhookCommentValue, WebhookFeedCommentValue, WebhookMessagingEvent, NormalisedCommentEvent } from "../../types/instagram.types";
 import type { ExecutionStatus } from "../../types/executionLog.types";
+
+// ─── Cached IG account lookup ──────────────────────────────────────────────
+async function getCachedIgAccount(userId: string) {
+  const cacheKey = CACHE_KEY.IG_ACCOUNT(userId);
+  const cached = cache.get<Awaited<ReturnType<typeof InstagramAccount.findOne>>>(cacheKey);
+  if (cached) return cached;
+  const account = await InstagramAccount.findOne({ userId });
+  if (account) cache.set(cacheKey, account, CACHE_TTL.IG_ACCOUNT);
+  return account;
+}
 
 const instagramRoutes = Router();
 const instagramService = new InstagramService();
@@ -85,6 +96,8 @@ instagramRoutes.get("/callback", async (req: Request, res: Response) => {
 instagramRoutes.delete("/disconnect", authMiddleware, async (req: Request, res: Response) => {
   try {
     await instagramService.disconnect(req.user!.userId);
+    // Invalidate cached IG account so future requests don't get stale data
+    cache.del(CACHE_KEY.IG_ACCOUNT(req.user!.userId));
     const response: ApiResponse = { success: true, message: "Instagram disconnected" };
     return res.status(200).json(response);
   } catch (error) {
@@ -111,12 +124,10 @@ instagramRoutes.get("/reels", authMiddleware, async (req: Request, res: Response
   }
 });
 
-// ─── GET /account — Return connected Instagram account info ────────────────
+// ─── GET /account — Return connected Instagram account info (cached) ───────
 instagramRoutes.get("/account", authMiddleware, async (req: Request, res: Response) => {
   try {
-    const igAccount = await InstagramAccount.findOne({ userId: req.user!.userId }).select(
-      "instagramUserId username createdAt tokenExpiresAt"
-    );
+    const igAccount = await getCachedIgAccount(req.user!.userId);
     const response: ApiResponse = { success: true, data: igAccount };
     return res.status(200).json(response);
   } catch (error) {
@@ -158,7 +169,7 @@ instagramRoutes.post("/message", authMiddleware, async (req: Request, res: Respo
       return res.status(400).json(response);
     }
 
-    const igAccount = await InstagramAccount.findOne({ userId: req.user!.userId });
+    const igAccount = await getCachedIgAccount(req.user!.userId);
     if (!igAccount?.accessToken) {
       const response: ApiResponse = { success: false, message: "Instagram account not connected" };
       return res.status(400).json(response);
@@ -201,7 +212,7 @@ instagramRoutes.post("/comment", authMiddleware, async (req: Request, res: Respo
       return res.status(400).json(response);
     }
 
-    const igAccount = await InstagramAccount.findOne({ userId: req.user!.userId });
+    const igAccount = await getCachedIgAccount(req.user!.userId);
     if (!igAccount?.accessToken) {
       const response: ApiResponse = { success: false, message: "Instagram account not connected" };
       return res.status(400).json(response);
@@ -241,7 +252,7 @@ instagramRoutes.get("/comments/:mediaId", authMiddleware, async (req: Request, r
     const mediaIdParam = req.params.mediaId;
     const mediaId = Array.isArray(mediaIdParam) ? mediaIdParam[0] : mediaIdParam;
 
-    const igAccount = await InstagramAccount.findOne({ userId: req.user!.userId });
+    const igAccount = await getCachedIgAccount(req.user!.userId);
     if (!igAccount?.accessToken) {
       const response: ApiResponse = { success: false, message: "Instagram account not connected" };
       return res.status(400).json(response);

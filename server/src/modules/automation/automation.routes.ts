@@ -5,6 +5,7 @@ import ExecutionLog from "../../models/ExecutionLog";
 import InstagramAccount from "../../models/InstagramAccounts";
 import { createAutomationSchema, updateAutomationSchema } from "./automation.schema";
 import { DEFAULT_LOG_LIMIT } from "../../constants";
+import { cache, CACHE_KEY, CACHE_TTL } from "../../utils/cache";
 import type { ApiResponse } from "../../types/common.types";
 import type { IAutomation } from "../../types/automation.types";
 import type { IExecutionLog } from "../../types/executionLog.types";
@@ -13,13 +14,29 @@ const automationRoutes = Router();
 
 automationRoutes.use(authMiddleware);
 
+// ─── Automation cache helpers ───────────────────────────────────────────────
+function invalidateAutomationCache(userId: string) {
+  cache.del(CACHE_KEY.AUTOMATIONS(userId));
+}
+
 // ─── GET / — List all automations for the authenticated user ───────────────
 automationRoutes.get("/", async (req: Request, res: Response) => {
   try {
-    const automations = await Automation.find({ userId: req.user!.userId }).populate(
-      "instagramAccountId"
-    );
-    const response: ApiResponse<IAutomation[]> = { success: true, data: automations as unknown as IAutomation[] };
+    const userId = req.user!.userId;
+    const cacheKey = CACHE_KEY.AUTOMATIONS(userId);
+    const cached = cache.get<IAutomation[]>(cacheKey);
+
+    if (cached) {
+      const response: ApiResponse<IAutomation[]> = { success: true, data: cached };
+      return res.status(200).json(response);
+    }
+
+    const automations = await Automation.find({ userId }).populate("instagramAccountId");
+    const result = automations as unknown as IAutomation[];
+
+    cache.set(cacheKey, result, CACHE_TTL.AUTOMATIONS);
+
+    const response: ApiResponse<IAutomation[]> = { success: true, data: result };
     return res.status(200).json(response);
   } catch (error) {
     const response: ApiResponse = {
@@ -67,6 +84,9 @@ automationRoutes.post("/", async (req: Request, res: Response) => {
       enabled,
     });
 
+    // Invalidate the automation list cache so next GET returns fresh data
+    invalidateAutomationCache(req.user!.userId);
+
     const response: ApiResponse<{ automation: IAutomation }> = {
       success: true,
       data: { automation: automation as unknown as IAutomation },
@@ -105,6 +125,9 @@ automationRoutes.put("/:id", async (req: Request, res: Response) => {
       return res.status(404).json(response);
     }
 
+    // Invalidate cache after update
+    invalidateAutomationCache(req.user!.userId);
+
     const response: ApiResponse<{ automation: IAutomation }> = {
       success: true,
       data: { automation: automation as unknown as IAutomation },
@@ -131,6 +154,9 @@ automationRoutes.delete("/:id", async (req: Request, res: Response) => {
       const response: ApiResponse = { success: false, message: "Automation not found" };
       return res.status(404).json(response);
     }
+
+    // Invalidate cache after delete
+    invalidateAutomationCache(req.user!.userId);
 
     const response: ApiResponse = { success: true, message: "Automation deleted" };
     return res.status(200).json(response);

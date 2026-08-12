@@ -18,6 +18,10 @@ export const IG_SCOPES = [
 export const TOKEN_EXPIRY_DAYS = 60 as const;
 export const JWT_EXPIRY = "30d" as const;
 
+// ─── Cookie Configuration ──────────────────────────────────────────────────
+export const COOKIE_NAME = "auth_token" as const;
+export const COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
 // ─── Automation Types ──────────────────────────────────────────────────────
 export const AUTOMATION_TYPE = {
   COMMENT: "COMMENT",
@@ -53,7 +57,31 @@ export const WEBHOOK_LOG_FILENAME = "webhook_debug.log" as const;
 
 // ─── Pagination ────────────────────────────────────────────────────────────
 export const DEFAULT_LOG_LIMIT = 100 as const;
+export const ADMIN_LOG_LIMIT   = 500 as const;
+export const ADMIN_USER_LIMIT  = 50  as const;
 
 // ─── Instagram Media Fields ────────────────────────────────────────────────
 export const IG_MEDIA_FIELDS =
   "id,caption,thumbnail_url,permalink,like_count,comments_count,media_type,media_product_type" as const;
+
+// ─── Rate Limiting ─────────────────────────────────────────────────────────
+/** General API: 200 requests per 15 minutes per IP */
+export const RATE_LIMIT_WINDOW_MS  = 15 * 60_000;
+export const RATE_LIMIT_MAX        = 200 as const;
+
+/** Login / auth: max 5 attempts per hour per IP */
+export const LOGIN_RATE_WINDOW_MS  = 60 * 60_000;
+export const LOGIN_RATE_MAX        = 5 as const;
+
+// ─── Admin configuration ───────────────────────────────────────────────────
+/** The initial admin user seeded on first boot */
+export const INITIAL_ADMIN_EMAIL = "rahulkardile321@gmail.com" as const;
+
+// ─── Database ─────────────────────────────────────────────────────────────
+export const MAX_DB_POOL_SIZE          = 10 as const;
+export const DB_SERVER_SELECTION_MS    = 5_000 as const;
+export const DB_SOCKET_TIMEOUT_MS      = 45_000 as const;
+
+// ─── Active session window ─────────────────────────────────────────────────
+/** Users with lastLoginAt within this window are considered "currently active" */
+export const ACTIVE_WINDOW_MINUTES = 15 as const;

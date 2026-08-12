@@ -21,6 +21,7 @@ export const ROUTES = {
   HOME: "/",
   LOGIN: "/login",
   DASHBOARD: "/dashboard",
+  ADMIN: "/admin",
   ABOUT: "/about",
   PRIVACY: "/privacy-policy",
   REELS: "/reels",
@@ -35,6 +36,12 @@ export const QUERY_KEYS = {
   REELS:         ["reels"]             as const,
   IG_ACCOUNT:    ["igAccount"]         as const,
   CONVERSATIONS: ["conversations"]     as const,
+  // Admin panel
+  ADMIN_STATS:   ["admin", "stats"]    as const,
+  ADMIN_DAU:     ["admin", "dau"]      as const,
+  ADMIN_USERS:   ["admin", "users"]    as const,
+  ADMIN_LOGS:    ["admin", "logs"]     as const,
+  ADMIN_ACTIVE:  ["admin", "active"]   as const,
 } as const;
 
 /* ──────────────────────────────────────────────────────────────────── */
@@ -49,10 +56,15 @@ export const CACHE = {
   STALE_REELS: 5 * 60_000,
   /** Account info is stable – 10 min stale time */
   STALE_IG_ACCOUNT: 10 * 60_000,
-  /** Inbox polls for new DMs every 5 s */
-  CONVERSATIONS_REFETCH: 5_000,
+  /** Inbox polls for new DMs every 15 s (was 5 s — too aggressive) */
+  CONVERSATIONS_REFETCH: 15_000,
   /** Unused queries are garbage-collected after 10 min */
   GC_TIME: 10 * 60_000,
+  // Admin
+  STALE_ADMIN_STATS:  30_000,
+  STALE_ADMIN_DAU:    60_000,
+  STALE_ADMIN_USERS:  15_000,
+  STALE_ADMIN_ACTIVE: 30_000,
 } as const;
 
 /* ──────────────────────────────────────────────────────────────────── */
@@ -69,6 +81,16 @@ export const API = {
   IG_DISCONNECT:     "/instagram/disconnect",
   AUTH_ME:           "/auth/me",
   AUTH_REGISTER:     "/auth/register",
+  AUTH_LOGIN:        "/auth/login",
+  AUTH_LOGOUT:       "/auth/logout",
+  // Admin
+  ADMIN_STATS:       "/admin/stats",
+  ADMIN_DAU:         "/admin/dau",
+  ADMIN_ACTIVE:      "/admin/active-now",
+  ADMIN_USERS:       "/admin/users",
+  ADMIN_LOGS:        "/admin/logs",
+  ADMIN_CACHE_STATS: "/admin/cache-stats",
+  ADMIN_CACHE_FLUSH: "/admin/cache-flush",
 } as const;
 
 /* ──────────────────────────────────────────────────────────────────── */
@@ -85,11 +107,23 @@ export const TABS = {
 export type TabId = typeof TABS[keyof typeof TABS];
 
 /* ──────────────────────────────────────────────────────────────────── */
+/*  Admin panel tab identifiers                                         */
+/* ──────────────────────────────────────────────────────────────────── */
+export const ADMIN_TABS = {
+  OVERVIEW:   "overview",
+  USERS:      "users",
+  LOGS:       "logs",
+  CACHE:      "cache",
+} as const;
+
+export type AdminTabId = typeof ADMIN_TABS[keyof typeof ADMIN_TABS];
+
+/* ──────────────────────────────────────────────────────────────────── */
 /*  localStorage keys                                                   */
 /* ──────────────────────────────────────────────────────────────────── */
 export const STORAGE = {
   THEME:        "instaflow-theme",
-  AUTH_SESSION: "auth_session",
+  AUTH_SESSION: "instaflow-user",
 } as const;
 
 /* ──────────────────────────────────────────────────────────────────── */

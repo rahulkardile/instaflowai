@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, type ReactNode } from "react";
-import { Unplug, Camera, ChevronRight, Sun, Moon, LogOut } from "lucide-react";
+import { Unplug, Camera, ChevronRight, Sun, Moon, LogOut, Shield } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { TabId } from "../../constants";
 import type { AuthUser } from "../../types/AuthUser";
@@ -95,6 +95,22 @@ export function Sidebar({
             </button>
           ))}
         </div>
+
+        {/* Admin link — only for admin role users */}
+        {user.role === "admin" && (
+          <div className="mt-4">
+            <div className="mb-1.5 px-2">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#a1a1aa] dark:text-[#71717a]">Admin</p>
+            </div>
+            <a
+              href="/admin"
+              className="group flex w-full items-center gap-3 rounded-[12px] px-3 py-2.5 text-left transition-all duration-150 text-[#71717a] hover:bg-violet-50 hover:text-violet-700 dark:text-[#a1a1aa] dark:hover:bg-violet-950/40 dark:hover:text-violet-300"
+            >
+              <Shield size={15} className="text-[#a1a1aa] group-hover:text-violet-600 dark:text-[#71717a] dark:group-hover:text-violet-400" />
+              <span className="flex-1 text-[13px] font-medium">Admin Panel</span>
+            </a>
+          </div>
+        )}
       </nav>
 
       {/* Bottom Area: IG Status + Profile Menu Trigger */}

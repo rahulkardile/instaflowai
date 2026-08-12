@@ -33,4 +33,8 @@ const AutomationSchema = new mongoose.Schema(
   },
 );
 
+// ─── Indexes ───────────────────────────────────────────────────────────────
+AutomationSchema.index({ userId: 1, enabled: 1 });  // webhook: find enabled automations for user
+AutomationSchema.index({ type: 1, enabled: 1 });    // webhook: find enabled automations by type
+
 export default mongoose.model("Automation", AutomationSchema);
