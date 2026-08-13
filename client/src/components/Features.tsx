@@ -43,15 +43,15 @@ const features = [
 
 export default function Features() {
   return (
-    <section id="features" className="py-32">
+    <section id="features" className="py-20 md:py-32">
       <Container>
 
         {/* Section header */}
-        <div className="mb-16 max-w-xl">
+        <div className="mb-10 max-w-xl md:mb-16">
           <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-[#7c3aed]">
             Features
           </p>
-          <h2 className="mt-3 text-[36px] font-black leading-[1.1] tracking-[-0.025em] text-[#111111]">
+          <h2 className="mt-3 text-[28px] font-black leading-[1.1] tracking-[-0.025em] text-[#111111] sm:text-[32px] md:text-[36px]">
             Everything you need
             <br />
             to grow on Instagram.

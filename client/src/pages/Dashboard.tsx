@@ -253,10 +253,12 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<TabId>(TABS.REELS);
   const [logLimit, setLogLimit] = useState<number>(LOG.INITIAL_LIMIT);
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
+  const [showInboxChat, setShowInboxChat] = useState(false);
   const [messageInput, setMessageInput] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const profileRef = useRef<HTMLDivElement>(null);
 
@@ -456,18 +458,34 @@ export default function Dashboard() {
   return (
     <div className="flex min-h-screen bg-[#fafafb] text-[#111111] transition-colors duration-200 dark:bg-[#09090b] dark:text-[#fafafa]">
 
-      {/* ── Sidebar ── */}
-      <aside className="fixed left-0 top-0 z-40 flex h-full w-[240px] flex-col border-r border-black/[0.06] bg-white transition-colors dark:border-white/[0.06] dark:bg-[#111114]">
+      {/* ── Mobile sidebar overlay ── */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/40 backdrop-blur-sm lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
 
-        {/* Logo */}
+      {/* ── Sidebar ── */}
+      <aside className={`fixed left-0 top-0 z-40 flex h-full w-[240px] flex-col border-r border-black/[0.06] bg-white transition-all duration-300 dark:border-white/[0.06] dark:bg-[#111114] ${
+        sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+      }`}>
+
+        {/* Logo + close button (mobile) */}
         <div className="flex h-16 items-center gap-2.5 border-b border-black/[0.05] px-5 dark:border-white/[0.05]">
           <img
             src="/instaFlow-icon.png"
             alt="InstaFlow Logo"
             className="h-8 w-8 shrink-0 rounded-[10px] object-cover"
           />
-
-          <span className="text-[14px] font-semibold tracking-tight text-[#111111] dark:text-white">InstaFlow</span>
+          <span className="flex-1 text-[14px] font-semibold tracking-tight text-[#111111] dark:text-white">InstaFlow</span>
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="flex h-7 w-7 items-center justify-center rounded-[8px] text-[#a1a1aa] transition hover:bg-[#f4f4f5] hover:text-[#111111] lg:hidden dark:hover:bg-white/10 dark:hover:text-white"
+            aria-label="Close sidebar"
+          >
+            <X size={15} />
+          </button>
         </div>
 
         {/* Navigation list */}
@@ -482,7 +500,7 @@ export default function Dashboard() {
               <button
                 key={item.id}
                 id={`tab-${item.id}`}
-                onClick={() => setActiveTab(item.id)}
+                onClick={() => { setActiveTab(item.id); setSidebarOpen(false); }}
                 className={`group flex w-full items-center gap-3 rounded-[12px] px-3 py-2.5 text-left transition-all duration-150 ${activeTab === item.id
                   ? "bg-violet-50 text-[#7c3aed] dark:bg-violet-950/40 dark:text-violet-300"
                   : "text-[#71717a] hover:bg-[#f4f4f5] hover:text-[#111111] dark:text-[#a1a1aa] dark:hover:bg-white/5 dark:hover:text-white"
@@ -606,16 +624,29 @@ export default function Dashboard() {
       </aside>
 
       {/* ── Main content ── */}
-      <main className="ml-[240px] flex min-h-screen flex-1 flex-col">
+      <main className="flex min-h-screen flex-1 flex-col lg:ml-[240px]">
 
         {/* Top Sticky Header */}
-        <div className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-black/[0.05] bg-white/80 px-8 backdrop-blur-xl transition-colors dark:border-white/[0.05] dark:bg-[#09090b]/80">
-          <div>
+        <div className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-black/[0.05] bg-white/80 px-4 backdrop-blur-xl transition-colors md:px-8 dark:border-white/[0.05] dark:bg-[#09090b]/80">
+          <div className="flex items-center gap-3">
+            {/* Hamburger button — mobile only */}
+            <button
+              id="sidebar-toggle"
+              onClick={() => setSidebarOpen((p) => !p)}
+              className="flex h-9 w-9 items-center justify-center rounded-[10px] border border-black/[0.08] bg-[#fafafb] text-[#71717a] transition hover:bg-[#f4f4f5] lg:hidden dark:border-white/[0.1] dark:bg-white/5 dark:text-[#a1a1aa] dark:hover:bg-white/10"
+              aria-label="Toggle menu"
+            >
+              <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+                <rect y="2" width="15" height="1.5" rx="0.75" fill="currentColor"/>
+                <rect y="6.75" width="15" height="1.5" rx="0.75" fill="currentColor"/>
+                <rect y="11.5" width="15" height="1.5" rx="0.75" fill="currentColor"/>
+              </svg>
+            </button>
             <h1 className="text-[15px] font-semibold text-[#111111] dark:text-white">
               {navItems.find((n) => n.id === activeTab)?.label ?? "Dashboard"}
             </h1>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 md:gap-3">
             {/* Dark / Light Theme Toggle Button */}
             <button
               onClick={toggleTheme}
@@ -629,21 +660,22 @@ export default function Dashboard() {
             {!user.instagramConnected && (
               <button
                 onClick={connectIG}
-                className="flex items-center gap-2 rounded-[14px] px-4 py-2 text-[13px] font-semibold text-white transition hover:opacity-90"
+                className="flex items-center gap-2 rounded-[14px] px-3 py-2 text-[12px] font-semibold text-white transition hover:opacity-90 md:px-4 md:text-[13px]"
                 style={{ background: "linear-gradient(135deg, #7c3aed, #ec4899)" }}
               >
                 <Camera size={14} />
-                Connect Instagram
+                <span className="hidden sm:inline">Connect Instagram</span>
+                <span className="sm:hidden">Connect</span>
               </button>
             )}
           </div>
         </div>
 
         {/* Main Workspace Area */}
-        <div className="flex-1 px-8 py-8">
+        <div className="flex-1 px-4 py-6 md:px-8 md:py-8">
 
           {/* Stats overview grid */}
-          <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mb-6 grid grid-cols-2 gap-3 md:mb-8 md:gap-4 lg:grid-cols-4">
             {loadingAutomations || loadingLogs ? (
               <><SkeletonCard /><SkeletonCard /><SkeletonCard /><SkeletonCard /></>
             ) : (
@@ -829,31 +861,49 @@ export default function Dashboard() {
                   <EmptyState icon={<Activity size={36} strokeWidth={1.5} />} title="No activity yet" desc="Automation events will appear here once triggered." />
                 ) : (
                   <>
-                    <div className="grid grid-cols-[1fr_1fr_2fr_1fr_80px] gap-4 border-b border-black/[0.05] bg-[#fafafb] px-6 py-3 dark:border-white/[0.05] dark:bg-white/[0.02]">
+                    {/* Desktop table header — hidden on mobile */}
+                    <div className="hidden grid-cols-[1fr_1fr_2fr_1fr_80px] gap-4 border-b border-black/[0.05] bg-[#fafafb] px-6 py-3 md:grid dark:border-white/[0.05] dark:bg-white/[0.02]">
                       {["Time", "From", "Message", "Action", "Status"].map((h) => (
                         <p key={h} className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#a1a1aa] dark:text-[#71717a]">{h}</p>
                       ))}
                     </div>
                     {logs.slice(0, logLimit).map((log) => (
-                      <div
-                        key={log._id}
-                        className="grid grid-cols-[1fr_1fr_2fr_1fr_80px] gap-4 border-b border-black/[0.04] px-6 py-4 text-[13px] transition hover:bg-[#fafafb] dark:border-white/[0.04] dark:hover:bg-white/[0.02]"
-                      >
-                        <div className="flex items-center gap-1.5 text-[#a1a1aa]">
-                          <Clock size={11} />
-                          <span className="truncate">{new Date(log.createdAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                      <div key={log._id}>
+                        {/* Desktop row */}
+                        <div className="hidden grid-cols-[1fr_1fr_2fr_1fr_80px] gap-4 border-b border-black/[0.04] px-6 py-4 text-[13px] transition hover:bg-[#fafafb] md:grid dark:border-white/[0.04] dark:hover:bg-white/[0.02]">
+                          <div className="flex items-center gap-1.5 text-[#a1a1aa]">
+                            <Clock size={11} />
+                            <span className="truncate">{new Date(log.createdAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                          </div>
+                          <p className="truncate font-medium text-[#111111] dark:text-white">
+                            {log.commenterUsername || log.dmSenderId || "—"}
+                          </p>
+                          <p className="truncate text-[#71717a] dark:text-[#a1a1aa]">
+                            {log.commentText || log.dmText || "—"}
+                          </p>
+                          <div><ActionBadge action={log.action} /></div>
+                          <div><StatusBadge status={log.status} /></div>
                         </div>
-                        <p className="truncate font-medium text-[#111111] dark:text-white">
-                          {log.commenterUsername || log.dmSenderId || "—"}
-                        </p>
-                        <p className="truncate text-[#71717a] dark:text-[#a1a1aa]">
-                          {log.commentText || log.dmText || "—"}
-                        </p>
-                        <div>
-                          <ActionBadge action={log.action} />
-                        </div>
-                        <div>
-                          <StatusBadge status={log.status} />
+                        {/* Mobile card */}
+                        <div className="border-b border-black/[0.04] px-4 py-3.5 text-[13px] md:hidden dark:border-white/[0.04]">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="truncate font-medium text-[#111111] dark:text-white">
+                              {log.commenterUsername || log.dmSenderId || "—"}
+                            </p>
+                            <div className="flex shrink-0 items-center gap-1.5">
+                              <ActionBadge action={log.action} />
+                              <StatusBadge status={log.status} />
+                            </div>
+                          </div>
+                          {(log.commentText || log.dmText) && (
+                            <p className="mt-1 truncate text-[12px] text-[#71717a] dark:text-[#a1a1aa]">
+                              {log.commentText || log.dmText}
+                            </p>
+                          )}
+                          <div className="mt-1.5 flex items-center gap-1 text-[11px] text-[#a1a1aa]">
+                            <Clock size={10} />
+                            <span>{new Date(log.createdAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -878,117 +928,132 @@ export default function Dashboard() {
           {activeTab === TABS.INBOX && (
             <div>
               <SectionHeader title="Inbox" subtitle="View and reply to direct messages." />
-              <div className="flex h-[600px] overflow-hidden rounded-[20px] border border-black/[0.06] bg-white shadow-[0_1px_4px_rgba(0,0,0,0.05)] dark:border-white/[0.06] dark:bg-[#111114]">
-                {/* Sidebar */}
-                <div className="flex w-[280px] shrink-0 flex-col border-r border-black/[0.05] dark:border-white/[0.05]">
-                  <div className="border-b border-black/[0.05] px-5 py-4 dark:border-white/[0.05]">
-                    <p className="text-[13px] font-semibold text-[#111111] dark:text-white">Conversations</p>
-                    <p className="mt-0.5 text-[11px] text-[#a1a1aa]">{conversationSenders.length} threads</p>
+              <div className="overflow-hidden rounded-[20px] border border-black/[0.06] bg-white shadow-[0_1px_4px_rgba(0,0,0,0.05)] dark:border-white/[0.06] dark:bg-[#111114]">
+                {/* Mobile: show list OR chat, Desktop: side-by-side */}
+                <div className="flex h-[calc(100svh-280px)] min-h-[400px] max-h-[700px]">
+                  {/* Conversation list — full width on mobile when chat is not open */}
+                  <div className={`flex flex-col border-r border-black/[0.05] dark:border-white/[0.05] ${
+                    showInboxChat ? "hidden md:flex md:w-[280px] md:shrink-0" : "flex w-full md:w-[280px] md:shrink-0"
+                  }`}>
+                    <div className="border-b border-black/[0.05] px-5 py-4 dark:border-white/[0.05]">
+                      <p className="text-[13px] font-semibold text-[#111111] dark:text-white">Conversations</p>
+                      <p className="mt-0.5 text-[11px] text-[#a1a1aa]">{conversationSenders.length} threads</p>
+                    </div>
+                    <div className="flex-1 overflow-y-auto">
+                      {loadingConversations ? (
+                        <div className="flex items-center justify-center p-8">
+                          <Loader2 size={20} className="animate-spin text-[#a1a1aa]" />
+                        </div>
+                      ) : conversationSenders.length === 0 ? (
+                        <div className="p-6 text-center text-[13px] text-[#a1a1aa]">No conversations yet.</div>
+                      ) : (
+                        conversationSenders.map((senderId) => {
+                          const lastMessage = groupedConversations[senderId][groupedConversations[senderId].length - 1];
+                          const isSelected = selectedConversation === senderId;
+                          return (
+                            <button
+                              key={senderId}
+                              onClick={() => { setSelectedConversation(senderId); setShowInboxChat(true); }}
+                              className={`w-full border-b border-black/[0.04] px-5 py-4 text-left transition hover:bg-[#fafafb] dark:border-white/[0.04] dark:hover:bg-white/5 ${isSelected ? "bg-violet-50 dark:bg-violet-950/40" : ""
+                                }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#f4f4f5] text-[11px] font-bold text-[#71717a] dark:bg-white/10 dark:text-[#a1a1aa]">
+                                  {senderId.slice(0, 2).toUpperCase()}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="truncate text-[13px] font-medium text-[#111111] dark:text-white">{senderId}</p>
+                                  <p className="truncate text-[12px] text-[#a1a1aa]">{lastMessage.dmText}</p>
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
                   </div>
-                  <div className="flex-1 overflow-y-auto">
-                    {loadingConversations ? (
-                      <div className="flex items-center justify-center p-8">
-                        <Loader2 size={20} className="animate-spin text-[#a1a1aa]" />
-                      </div>
-                    ) : conversationSenders.length === 0 ? (
-                      <div className="p-6 text-center text-[13px] text-[#a1a1aa]">No conversations yet.</div>
-                    ) : (
-                      conversationSenders.map((senderId) => {
-                        const lastMessage = groupedConversations[senderId][groupedConversations[senderId].length - 1];
-                        const isSelected = selectedConversation === senderId;
-                        return (
+
+                  {/* Chat window — full width on mobile when chat is open */}
+                  <div className={`flex flex-col ${
+                    showInboxChat ? "flex flex-1" : "hidden md:flex md:flex-1"
+                  }`}>
+                    {selectedConversation ? (
+                      <>
+                        <div className="flex items-center gap-3 border-b border-black/[0.05] px-4 py-4 md:px-6 dark:border-white/[0.05]">
+                          {/* Back button on mobile */}
                           <button
-                            key={senderId}
-                            onClick={() => setSelectedConversation(senderId)}
-                            className={`w-full border-b border-black/[0.04] px-5 py-4 text-left transition hover:bg-[#fafafb] dark:border-white/[0.04] dark:hover:bg-white/5 ${isSelected ? "bg-violet-50 dark:bg-violet-950/40" : ""
-                              }`}
+                            onClick={() => setShowInboxChat(false)}
+                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-black/[0.08] text-[#71717a] transition hover:bg-[#f4f4f5] md:hidden dark:border-white/[0.1] dark:text-[#a1a1aa]"
+                            aria-label="Back to conversations"
                           >
-                            <div className="flex items-center gap-3">
-                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#f4f4f5] text-[11px] font-bold text-[#71717a] dark:bg-white/10 dark:text-[#a1a1aa]">
-                                {senderId.slice(0, 2).toUpperCase()}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="truncate text-[13px] font-medium text-[#111111] dark:text-white">{senderId}</p>
-                                <p className="truncate text-[12px] text-[#a1a1aa]">{lastMessage.dmText}</p>
-                              </div>
-                            </div>
+                            <ChevronRight size={14} className="rotate-180" />
                           </button>
-                        );
-                      })
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#f4f4f5] text-[11px] font-bold text-[#71717a] dark:bg-white/10 dark:text-[#a1a1aa]">
+                            {selectedConversation.slice(0, 2).toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="text-[13px] font-semibold text-[#111111] dark:text-white">{selectedConversation}</p>
+                            <p className="text-[11px] text-[#a1a1aa]">Instagram Direct Message</p>
+                          </div>
+                        </div>
+                        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 md:px-6">
+                          {groupedConversations[selectedConversation].map((log) => {
+                            const isOutgoing = log.action === "SEND_DM" || log.action === "DM_AUTO_REPLY";
+                            return (
+                              <div key={log._id} className={`flex flex-col ${isOutgoing ? "items-end" : "items-start"}`}>
+                                <div
+                                  className={`max-w-[80%] rounded-[16px] px-4 py-2.5 text-[13px] leading-[1.5] md:max-w-[70%] ${isOutgoing
+                                    ? "rounded-br-sm text-white"
+                                    : "rounded-bl-sm bg-[#f4f4f5] text-[#111111] dark:bg-white/10 dark:text-white"
+                                    }`}
+                                  style={isOutgoing ? { background: "linear-gradient(135deg, #7c3aed, #ec4899)" } : {}}
+                                >
+                                  {log.dmText}
+                                </div>
+                                <span className="mt-1 px-1 text-[10px] text-[#a1a1aa]">
+                                  {new Date(log.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                  {log.action === "DM_AUTO_REPLY" && " · Auto"}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="border-t border-black/[0.05] p-3 md:p-4 dark:border-white/[0.05]">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={messageInput}
+                              onChange={(e) => setMessageInput(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" && messageInput.trim()) {
+                                  sendMessageMutation.mutate({ recipientId: selectedConversation, text: messageInput });
+                                }
+                              }}
+                              placeholder="Type a message…"
+                              className="flex-1 rounded-full border border-black/[0.08] bg-[#fafafb] px-4 py-2.5 text-[13px] outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100 dark:border-white/[0.1] dark:bg-white/5 dark:text-white dark:focus:border-violet-500"
+                            />
+                            <button
+                              onClick={() => {
+                                if (messageInput.trim()) {
+                                  sendMessageMutation.mutate({ recipientId: selectedConversation, text: messageInput });
+                                }
+                              }}
+                              disabled={sendMessageMutation.isPending || !messageInput.trim()}
+                              className="flex h-10 w-10 items-center justify-center rounded-full text-white transition hover:opacity-90 disabled:opacity-50"
+                              style={{ background: "linear-gradient(135deg, #7c3aed, #ec4899)" }}
+                            >
+                              {sendMessageMutation.isPending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} className="ml-0.5" />}
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex flex-1 flex-col items-center justify-center gap-3 text-[#a1a1aa]">
+                        <MessageSquare size={36} strokeWidth={1.5} />
+                        <p className="text-[13px]">Select a conversation to start chatting</p>
+                      </div>
                     )}
                   </div>
-                </div>
-
-                {/* Chat window */}
-                <div className="flex flex-1 flex-col">
-                  {selectedConversation ? (
-                    <>
-                      <div className="flex items-center gap-3 border-b border-black/[0.05] px-6 py-4 dark:border-white/[0.05]">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#f4f4f5] text-[11px] font-bold text-[#71717a] dark:bg-white/10 dark:text-[#a1a1aa]">
-                          {selectedConversation.slice(0, 2).toUpperCase()}
-                        </div>
-                        <div>
-                          <p className="text-[13px] font-semibold text-[#111111] dark:text-white">{selectedConversation}</p>
-                          <p className="text-[11px] text-[#a1a1aa]">Instagram Direct Message</p>
-                        </div>
-                      </div>
-                      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
-                        {groupedConversations[selectedConversation].map((log) => {
-                          const isOutgoing = log.action === "SEND_DM" || log.action === "DM_AUTO_REPLY";
-                          return (
-                            <div key={log._id} className={`flex flex-col ${isOutgoing ? "items-end" : "items-start"}`}>
-                              <div
-                                className={`max-w-[70%] rounded-[16px] px-4 py-2.5 text-[13px] leading-[1.5] ${isOutgoing
-                                  ? "rounded-br-sm text-white"
-                                  : "rounded-bl-sm bg-[#f4f4f5] text-[#111111] dark:bg-white/10 dark:text-white"
-                                  }`}
-                                style={isOutgoing ? { background: "linear-gradient(135deg, #7c3aed, #ec4899)" } : {}}
-                              >
-                                {log.dmText}
-                              </div>
-                              <span className="mt-1 px-1 text-[10px] text-[#a1a1aa]">
-                                {new Date(log.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                                {log.action === "DM_AUTO_REPLY" && " · Auto"}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                      <div className="border-t border-black/[0.05] p-4 dark:border-white/[0.05]">
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            value={messageInput}
-                            onChange={(e) => setMessageInput(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" && messageInput.trim()) {
-                                sendMessageMutation.mutate({ recipientId: selectedConversation, text: messageInput });
-                              }
-                            }}
-                            placeholder="Type a message…"
-                            className="flex-1 rounded-full border border-black/[0.08] bg-[#fafafb] px-4 py-2.5 text-[13px] outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100 dark:border-white/[0.1] dark:bg-white/5 dark:text-white dark:focus:border-violet-500"
-                          />
-                          <button
-                            onClick={() => {
-                              if (messageInput.trim()) {
-                                sendMessageMutation.mutate({ recipientId: selectedConversation, text: messageInput });
-                              }
-                            }}
-                            disabled={sendMessageMutation.isPending || !messageInput.trim()}
-                            className="flex h-10 w-10 items-center justify-center rounded-full text-white transition hover:opacity-90 disabled:opacity-50"
-                            style={{ background: "linear-gradient(135deg, #7c3aed, #ec4899)" }}
-                          >
-                            {sendMessageMutation.isPending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} className="ml-0.5" />}
-                          </button>
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex flex-1 flex-col items-center justify-center gap-3 text-[#a1a1aa]">
-                      <MessageSquare size={36} strokeWidth={1.5} />
-                      <p className="text-[13px]">Select a conversation to start chatting</p>
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
@@ -1057,12 +1122,12 @@ export default function Dashboard() {
 /* ── Section Header ── */
 function SectionHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: React.ReactNode }) {
   return (
-    <div className="mb-6 flex items-start justify-between gap-4">
-      <div>
-        <h2 className="text-[18px] font-bold tracking-[-0.015em] text-[#111111] dark:text-white">{title}</h2>
-        {subtitle && <p className="mt-1 text-[13px] text-[#71717a] dark:text-[#a1a1aa]">{subtitle}</p>}
+    <div className="mb-5 flex flex-wrap items-start justify-between gap-3 sm:mb-6">
+      <div className="min-w-0">
+        <h2 className="text-[16px] font-bold tracking-[-0.015em] text-[#111111] sm:text-[18px] dark:text-white">{title}</h2>
+        {subtitle && <p className="mt-1 text-[12px] leading-[1.5] text-[#71717a] sm:text-[13px] dark:text-[#a1a1aa]">{subtitle}</p>}
       </div>
-      {action}
+      {action && <div className="shrink-0">{action}</div>}
     </div>
   );
 }
@@ -1083,14 +1148,14 @@ function StatCard({ icon, label, value, accent }: {
 }) {
   const a = accentMap[accent];
   return (
-    <div className="group rounded-[20px] border border-black/[0.06] bg-white p-6 shadow-[0_1px_4px_rgba(0,0,0,0.05)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] dark:border-white/[0.06] dark:bg-[#111114]">
+    <div className="group rounded-[20px] border border-black/[0.06] bg-white p-4 shadow-[0_1px_4px_rgba(0,0,0,0.05)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] sm:p-5 dark:border-white/[0.06] dark:bg-[#111114]">
       <div className="flex items-center justify-between">
-        <p className="text-[12px] font-medium text-[#71717a] dark:text-[#a1a1aa]">{label}</p>
-        <div className={`flex h-8 w-8 items-center justify-center rounded-[10px] ${a.icon}`}>
+        <p className="text-[11px] font-medium text-[#71717a] sm:text-[12px] dark:text-[#a1a1aa]">{label}</p>
+        <div className={`flex h-7 w-7 items-center justify-center rounded-[8px] sm:h-8 sm:w-8 sm:rounded-[10px] ${a.icon}`}>
           {icon}
         </div>
       </div>
-      <p className={`mt-3 text-[24px] font-black tracking-tight ${a.val}`}>{value}</p>
+      <p className={`mt-2 text-[20px] font-black tracking-tight sm:mt-3 sm:text-[24px] ${a.val}`}>{value}</p>
     </div>
   );
 }

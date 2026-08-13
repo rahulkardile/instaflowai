@@ -34,9 +34,9 @@ export default function FAQ() {
   const [open, setOpen] = useState<number | null>(null);
 
   return (
-    <section id="faq" className="py-32">
+    <section id="faq" className="py-20 md:py-32">
       <Container>
-        <div className="grid gap-16 lg:grid-cols-[280px_1fr]">
+        <div className="grid gap-10 lg:grid-cols-[280px_1fr] lg:gap-16">
 
           {/* Left — sticky header */}
           <div className="lg:sticky lg:top-28 lg:self-start">

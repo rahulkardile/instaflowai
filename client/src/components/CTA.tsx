@@ -7,7 +7,7 @@ export default function CTA() {
     <section className="py-24">
       <Container>
         <div
-          className="relative overflow-hidden rounded-[28px] px-12 py-20 text-center"
+          className="relative overflow-hidden rounded-[24px] px-6 py-14 text-center sm:rounded-[28px] sm:px-12 sm:py-20"
           style={{ background: "#09090b" }}
         >
           {/* Subtle grid pattern */}
@@ -33,7 +33,7 @@ export default function CTA() {
           />
 
           <div className="relative">
-            <h2 className="mx-auto max-w-2xl text-[40px] font-black leading-[1.08] tracking-[-0.03em] text-white">
+            <h2 className="mx-auto max-w-2xl text-[28px] font-black leading-[1.08] tracking-[-0.03em] text-white sm:text-[36px] md:text-[40px]">
               Start automating your Instagram today.
             </h2>
             <p className="mx-auto mt-5 max-w-md text-[16px] leading-[1.7] text-white/50">

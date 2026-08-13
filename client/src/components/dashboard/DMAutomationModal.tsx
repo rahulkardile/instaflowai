@@ -36,7 +36,7 @@ export function DMAutomationModal({ onClose, onSave, isSaving }: {
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 12 }}
         transition={{ duration: 0.25, ease: [0.25, 0.46, 0.45, 0.94] }}
-        className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-[28px] bg-white p-8 shadow-[0_16px_48px_rgba(0,0,0,0.16)] dark:bg-[#111114] dark:border dark:border-white/[0.08]"
+        className="relative max-h-[90svh] w-full max-w-lg overflow-y-auto rounded-[24px] bg-white p-5 shadow-[0_16px_48px_rgba(0,0,0,0.16)] sm:rounded-[28px] sm:p-8 dark:bg-[#111114] dark:border dark:border-white/[0.08]"
       >
         <button
           id="close-dm-automation-modal"

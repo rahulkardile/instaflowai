@@ -30,15 +30,15 @@ const steps = [
 
 export default function HowItWorks() {
   return (
-    <section id="how-it-works" className="py-32">
+    <section id="how-it-works" className="py-20 md:py-32">
       <Container>
 
         {/* Section header */}
-        <div className="mb-20 max-w-xl">
+        <div className="mb-12 max-w-xl md:mb-20">
           <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-[#7c3aed]">
             How it works
           </p>
-          <h2 className="mt-3 text-[36px] font-black leading-[1.1] tracking-[-0.025em] text-[#111111]">
+          <h2 className="mt-3 text-[28px] font-black leading-[1.1] tracking-[-0.025em] text-[#111111] sm:text-[32px] md:text-[36px]">
             Up and running
             <br />
             in minutes.

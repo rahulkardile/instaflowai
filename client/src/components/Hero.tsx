@@ -57,7 +57,7 @@ const automationSteps = [
 
 export default function Hero() {
   return (
-    <section className="relative overflow-hidden pt-36 pb-24">
+    <section className="relative overflow-hidden pt-28 pb-16 md:pt-36 md:pb-24">
       {/* Subtle background glow */}
       <div
         className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2"
@@ -69,8 +69,8 @@ export default function Hero() {
         }}
       />
 
-      <div className="relative mx-auto max-w-6xl px-6">
-        <div className="grid items-center gap-16 lg:grid-cols-2">
+      <div className="relative mx-auto max-w-6xl px-4 sm:px-6">
+        <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
 
           {/* Left — copy */}
           <div>
@@ -97,7 +97,7 @@ export default function Hero() {
               initial="hidden"
               animate="show"
               custom={1}
-              className="mt-6 text-[52px] font-black leading-[1.08] tracking-[-0.03em] text-[#111111]"
+              className="mt-6 text-[36px] font-black leading-[1.08] tracking-[-0.03em] text-[#111111] sm:text-[44px] md:text-[52px]"
             >
               Automate Instagram.
               <br />
@@ -149,7 +149,7 @@ export default function Hero() {
               initial="hidden"
               animate="show"
               custom={4}
-              className="mt-12 flex items-center gap-8"
+              className="mt-10 flex flex-wrap items-center gap-6 md:mt-12 md:gap-8"
             >
               {stats.map((stat, i) => (
                 <div key={stat.label}>
