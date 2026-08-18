@@ -9,6 +9,7 @@ const Login = lazy(() => import("./pages/Login"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Reels = lazy(() => import("./pages/Reels"));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
+const AdminPanel = lazy(() => import("./pages/AdminPanel"));
 
 function PageLoader() {
   return (
@@ -49,6 +50,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <Reels />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute requireRole="admin">
+              <AdminPanel />
             </ProtectedRoute>
           }
         />

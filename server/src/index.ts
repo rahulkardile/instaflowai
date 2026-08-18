@@ -10,6 +10,7 @@ import { authRoutes } from "./modules/auth/auth.routes";
 import { instagramRoutes } from "./modules/instagram/instagram.routes";
 import { automationRoutes } from "./modules/automation/automation.routes";
 import { healthRoutes } from "./modules/health/health.routes";
+import { adminRoutes } from "./modules/admin/admin.routes";
 import { apiLimiter } from "./middleware/rateLimiter";
 import { errorHandler } from "./middleware/errorHandler";
 import { startHealthCron } from "./services/healthCron";
@@ -62,6 +63,7 @@ app.use("/api/health", healthRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/instagram", instagramRoutes);
 app.use("/api/automations", automationRoutes);
+app.use("/api/admin", adminRoutes);
 
 // ─── Global error handler (must be last) ─────────────────────────────────
 app.use(errorHandler);
