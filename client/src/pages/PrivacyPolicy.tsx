@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Shield, ArrowLeft, Sun, Moon, Check, Mail } from "lucide-react";
+import { Shield, ArrowLeft, Check, Mail } from "lucide-react";
 
 import { APP, ROUTES } from "../constants";
-import { useTheme } from "../hooks/useTheme";
 
 const sections = [
   {
@@ -98,7 +97,6 @@ const sections = [
 ];
 
 export default function PrivacyPolicy() {
-  const { isDark, toggleTheme } = useTheme();
   const [activeSection, setActiveSection] = useState("overview");
 
   return (
@@ -119,14 +117,6 @@ export default function PrivacyPolicy() {
           </Link>
 
           <div className="flex items-center gap-3">
-            <button
-              onClick={toggleTheme}
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-black/[0.08] bg-[#fafafb] text-[#71717a] transition hover:bg-[#f4f4f5] dark:border-white/[0.1] dark:bg-white/5 dark:text-[#a1a1aa] dark:hover:bg-white/10"
-              aria-label="Toggle theme"
-            >
-              {isDark ? <Sun size={15} /> : <Moon size={15} />}
-            </button>
-
             <Link
               to={ROUTES.HOME}
               className="flex items-center gap-1.5 rounded-[12px] border border-black/[0.08] bg-white px-3.5 py-1.5 text-[13px] font-medium text-[#111111] no-underline transition hover:bg-[#f4f4f5] dark:border-white/[0.1] dark:bg-white/5 dark:text-[#fafafa] dark:hover:bg-white/10"

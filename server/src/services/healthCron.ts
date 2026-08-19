@@ -15,6 +15,9 @@ function getRandomInterval(min: number = MIN_INTERVAL_MS, max: number = MAX_INTE
 }
 
 export function startHealthCron() {
+  if (process.env.CRON_ENABLED !== "true") {
+    return;
+  }
   const port = process.env.PORT || 5000;
   const targetUrl =
     process.env.HEALTH_CHECK_URL ||

@@ -247,7 +247,7 @@ export default function Login(): JSX.Element {
   const clearError = () => setServerError("");
 
   return (
-    <div className="flex min-h-screen bg-[#fafafb]">
+    <div className="flex min-h-screen bg-[#fafafb] dark:bg-[#09090b]">
 
       {/* ── Left panel — brand (large screen only) ── */}
       <div className="hidden flex-col justify-between bg-[#09090b] p-12 lg:flex lg:w-[480px]">
@@ -295,7 +295,7 @@ export default function Login(): JSX.Element {
         <div className="mb-10 w-full max-w-sm lg:hidden">
           <Link
             to="/"
-            className="inline-flex items-center gap-1.5 text-[13px] text-[#71717a] no-underline transition-colors hover:text-[#111111]"
+            className="inline-flex items-center gap-1.5 text-[13px] text-[#71717a] no-underline transition-colors hover:text-[#111111] dark:text-[#a1a1aa] dark:hover:text-white"
           >
             <ArrowLeft size={13} />
             Back to home
@@ -315,11 +315,11 @@ export default function Login(): JSX.Element {
               alt="InstaFlow Logo"
               className="h-9 w-9 rounded-[11px] object-cover"
             />
-            <span className="text-[15px] font-semibold text-[#111111]">InstaFlow</span>
+            <span className="text-[15px] font-semibold text-[#111111] dark:text-white">InstaFlow</span>
           </div>
 
           {/* ── Tab switcher ── */}
-          <div className="mb-8 flex rounded-[14px] border border-black/[0.08] bg-[#f4f4f5] p-1">
+          <div className="mb-8 flex rounded-[14px] border border-black/[0.08] bg-[#f4f4f5] p-1 dark:border-white/[0.08] dark:bg-white/[0.06]">
             {(["signin", "register"] as const).map((tab) => (
               <button
                 key={tab}
@@ -331,8 +331,8 @@ export default function Login(): JSX.Element {
                 }}
                 className={`flex-1 rounded-[10px] py-2 text-[13px] font-semibold transition-all duration-150 ${
                   activeTab === tab
-                    ? "bg-white text-[#111111] shadow-[0_1px_4px_rgba(0,0,0,0.10)]"
-                    : "text-[#71717a] hover:text-[#111111]"
+                    ? "bg-white text-[#111111] shadow-[0_1px_4px_rgba(0,0,0,0.10)] dark:bg-[#18181b] dark:text-white"
+                    : "text-[#71717a] hover:text-[#111111] dark:text-[#71717a] dark:hover:text-white"
                 }`}
               >
                 {tab === "signin" ? "Sign In" : "Create Account"}
@@ -349,10 +349,10 @@ export default function Login(): JSX.Element {
                 exit={{ opacity: 0, x: 8 }}
                 transition={{ duration: 0.2 }}
               >
-                <h1 className="text-[26px] font-black tracking-[-0.025em] text-[#111111]">
+                <h1 className="text-[26px] font-black tracking-[-0.025em] text-[#111111] dark:text-white">
                   Welcome back
                 </h1>
-                <p className="mt-1.5 text-[14px] text-[#71717a]">
+                <p className="mt-1.5 text-[14px] text-[#71717a] dark:text-[#a1a1aa]">
                   Sign in to manage your Instagram automations.
                 </p>
 
@@ -363,9 +363,9 @@ export default function Login(): JSX.Element {
 
                 {/* Divider */}
                 <div className="my-5 flex items-center gap-3">
-                  <div className="h-px flex-1 bg-black/[0.08]" />
+                  <div className="h-px flex-1 bg-black/[0.08] dark:bg-white/[0.08]" />
                   <span className="text-[12px] text-[#a1a1aa]">or continue with email</span>
-                  <div className="h-px flex-1 bg-black/[0.08]" />
+                  <div className="h-px flex-1 bg-black/[0.08] dark:bg-white/[0.08]" />
                 </div>
 
                 {/* Email/Password form */}
@@ -423,10 +423,10 @@ export default function Login(): JSX.Element {
                 exit={{ opacity: 0, x: -8 }}
                 transition={{ duration: 0.2 }}
               >
-                <h1 className="text-[26px] font-black tracking-[-0.025em] text-[#111111]">
+                <h1 className="text-[26px] font-black tracking-[-0.025em] text-[#111111] dark:text-white">
                   Create account
                 </h1>
-                <p className="mt-1.5 text-[14px] text-[#71717a]">
+                <p className="mt-1.5 text-[14px] text-[#71717a] dark:text-[#a1a1aa]">
                   Get started with InstaFlow for free.
                 </p>
 
@@ -437,9 +437,9 @@ export default function Login(): JSX.Element {
 
                 {/* Divider */}
                 <div className="my-5 flex items-center gap-3">
-                  <div className="h-px flex-1 bg-black/[0.08]" />
+                  <div className="h-px flex-1 bg-black/[0.08] dark:bg-white/[0.08]" />
                   <span className="text-[12px] text-[#a1a1aa]">or register with email</span>
-                  <div className="h-px flex-1 bg-black/[0.08]" />
+                  <div className="h-px flex-1 bg-black/[0.08] dark:bg-white/[0.08]" />
                 </div>
 
                 {/* Register form */}

@@ -11,6 +11,7 @@ import {
   postComment,
   getComments,
   getCommentLogs,
+  verifyAccess,
   verifyWebhook,
   receiveWebhook,
 } from "./instagram.controller";
@@ -27,6 +28,7 @@ instagramRoutes.get("/reels", authMiddleware, getReels);
 instagramRoutes.get("/account", authMiddleware, getAccount);
 instagramRoutes.get("/comments/:mediaId", authMiddleware, getComments);
 instagramRoutes.get("/comment-logs", authMiddleware, getCommentLogs);
+instagramRoutes.get("/verify-access", authMiddleware, verifyAccess);
 instagramRoutes.post("/comment", authMiddleware, postComment);
 
 // ─── DM / Conversations ───────────────────────────────────────────────────

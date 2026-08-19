@@ -269,6 +269,87 @@ export async function getCommentLogs(req: Request, res: Response): Promise<void>
   }
 }
 
+// ─── GET /verify-access ───────────────────────────────────────────────────
+// Debug endpoint: validates the stored access token against the Graph API
+// and optionally fetches comments — counts as a Meta API test call.
+
+export async function verifyAccess(req: Request, res: Response): Promise<void> {
+  try {
+    const igAccount = await InstagramAccount.findOne({ userId: req.user!.userId });
+
+    if (!igAccount?.accessToken) {
+      res.status(400).json({
+        success: false,
+        message: "No Instagram account connected",
+      });
+      return;
+    }
+
+    const results: Record<string, unknown> = {
+      storedAccount: {
+        instagramUserId: igAccount.instagramUserId,
+        username: igAccount.username,
+        tokenExpiresAt: igAccount.tokenExpiresAt,
+      },
+    };
+
+    // 1. Verify token by fetching /me
+    const IG_GRAPH_API_BASE = "https://graph.instagram.com/v21.0";
+    const meRes = await fetch(
+      `${IG_GRAPH_API_BASE}/me?fields=id,username,account_type&access_token=${igAccount.accessToken}`
+    );
+    const meData = await meRes.json() as Record<string, unknown>;
+    results.graphApi_me = meData;
+
+    if ((meData as { error?: { message: string } }).error) {
+      console.error(`[verify-access] Token invalid: ${JSON.stringify(meData)}`);
+      res.status(200).json({
+        success: false,
+        message: "Access token validation failed — see graphApi_me for details",
+        data: results,
+      });
+      return;
+    }
+
+    console.log(`[verify-access] Token valid for user ${igAccount.username} (id: ${igAccount.instagramUserId})`);
+
+    // 2. Try fetching media list (tests instagram_business_basic)
+    const mediaRes = await fetch(
+      `${IG_GRAPH_API_BASE}/me/media?fields=id,caption,media_type&limit=5&access_token=${igAccount.accessToken}`
+    );
+    const mediaData = await mediaRes.json() as { data?: Array<{ id: string }> };
+    results.graphApi_media = mediaData;
+
+    // 3. If media exists, fetch comments on first item (tests instagram_business_manage_comments)
+    const firstMediaId = mediaData.data?.[0]?.id;
+    if (firstMediaId) {
+      const commentsRes = await fetch(
+        `${IG_GRAPH_API_BASE}/${firstMediaId}/comments?fields=id,text,timestamp,username&access_token=${igAccount.accessToken}`
+      );
+      const commentsData = await commentsRes.json();
+      results.graphApi_comments = commentsData;
+      console.log(`[verify-access] Fetched comments for media ${firstMediaId}:`, JSON.stringify(commentsData));
+    }
+
+    // 4. Check subscribed apps (webhook subscription)
+    const subsRes = await fetch(
+      `${IG_GRAPH_API_BASE}/${igAccount.instagramUserId}/subscribed_apps?access_token=${igAccount.accessToken}`
+    );
+    const subsData = await subsRes.json();
+    results.graphApi_subscriptions = subsData;
+
+    console.log(`[verify-access] Full results for user ${req.user!.userId}:`, JSON.stringify(results));
+
+    res.status(200).json({ success: true, data: results });
+  } catch (error) {
+    console.error(`[verify-access] Error:`, error);
+    res.status(500).json({
+      success: false,
+      message: error instanceof Error ? error.message : "Verification failed",
+    });
+  }
+}
+
 // ─── GET /webhook ─────────────────────────────────────────────────────────
 
 export function verifyWebhook(req: Request, res: Response): void {
@@ -300,11 +381,26 @@ export async function receiveWebhook(req: Request, res: Response): Promise<void>
   res.sendStatus(200);
 
   try {
-    const body = req.body as { entry?: WebhookEntry[] };
+    const body = req.body as { object?: string; entry?: WebhookEntry[] };
 
-    if (!body.entry?.length) return;
+    // Log every incoming webhook payload so we can verify Meta is calling us
+    console.log(
+      `[webhook] ▶ POST received — object="${body.object}" entries=${body.entry?.length ?? 0} ` +
+      `timestamp=${new Date().toISOString()}`
+    );
+    console.log(`[webhook] Raw payload: ${JSON.stringify(body)}`);
+
+    if (!body.entry?.length) {
+      console.log(`[webhook] No entries in payload — ignoring`);
+      return;
+    }
 
     for (const entry of body.entry) {
+      console.log(
+        `[webhook] Processing entry: id="${entry.id}" changes=${entry.changes?.length ?? 0} ` +
+        `messaging=${entry.messaging?.length ?? 0}`
+      );
+
       if (entry.changes?.length) {
         for (const change of entry.changes) {
           await handleCommentWebhook(change, entry).catch((err) => {
