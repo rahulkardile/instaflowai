@@ -3,7 +3,7 @@ import { InstagramService } from "./instagram.service";
 import { handleCommentWebhook, handleMessagingWebhook } from "./instagram.webhook";
 import InstagramAccount from "../../models/InstagramAccounts";
 import ExecutionLog from "../../models/ExecutionLog";
-import { EXECUTION_ACTION, EXECUTION_STATUS, WEBHOOK_FIELD } from "../../constants";
+import { EXECUTION_ACTION, EXECUTION_STATUS, WEBHOOK_FIELD, IG_GRAPH_API_BASE } from "../../constants";
 import type { ApiResponse } from "../../types/common.types";
 import type { MappedReel, WebhookEntry } from "../../types/instagram.types";
 
@@ -294,7 +294,6 @@ export async function verifyAccess(req: Request, res: Response): Promise<void> {
     };
 
     // 1. Verify token by fetching /me
-    const IG_GRAPH_API_BASE = "https://graph.instagram.com/v21.0";
     const meRes = await fetch(
       `${IG_GRAPH_API_BASE}/me?fields=id,username,account_type&access_token=${igAccount.accessToken}`
     );

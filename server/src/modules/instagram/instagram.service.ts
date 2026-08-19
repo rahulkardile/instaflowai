@@ -8,7 +8,6 @@ import {
   IG_LONG_TOKEN_URL,
   IG_SCOPES,
   TOKEN_EXPIRY_DAYS,
-  WEBHOOK_SUBSCRIBED_FIELDS,
   IG_MEDIA_FIELDS,
 } from "../../constants";
 import type {
@@ -16,7 +15,6 @@ import type {
   IGLongTokenResponse,
   IGProfileResponse,
   IGMediaResponse,
-  IGSubscribeResponse,
   IGApiResponse,
   MappedReel,
   IGCommentsResponse,
@@ -130,34 +128,53 @@ export class InstagramService {
     // 5. Mark user as connected
     await User.findByIdAndUpdate(userId, { instagramConnected: true });
 
-    // 6. Subscribe to webhook fields (comments + messages)
-    await this.subscribeToWebhook(igUserId, accessToken);
+    // 6. Check webhook subscription status (diagnostic only — webhooks are
+    //    configured via the Meta App Dashboard, not via API call)
+    await this.checkWebhookSubscriptions(igUserId, accessToken);
   }
 
   /**
-   * Subscribe the Instagram account to webhook fields (comments + messages).
-   * Must be called after the app-level webhook is configured in the Meta Dashboard.
+   * Checks what webhooks are currently subscribed for this IG account.
+   *
+   * NOTE: For the "Instagram API with Instagram Login" flow (which this app uses),
+   * webhook subscriptions are configured at the Meta App Dashboard level
+   * (Products → Webhooks → Instagram → subscribe fields).
+   * The old POST /{ig-user-id}/subscribed_apps endpoint does NOT reliably
+   * enable webhooks for this flow and should not be used.
+   *
+   * This method is diagnostic-only — it GETs the current subscriptions
+   * so we can log them and verify the setup.
    */
-  async subscribeToWebhook(igUserId: string, accessToken: string): Promise<void> {
+  async checkWebhookSubscriptions(igUserId: string, accessToken: string): Promise<void> {
     try {
-      const params = new URLSearchParams({
-        subscribed_fields: WEBHOOK_SUBSCRIBED_FIELDS,
-        access_token: accessToken,
-      });
-
-      const res = await fetch(`${IG_GRAPH_API_BASE}/${igUserId}/subscribed_apps?${params.toString()}`, {
-        method: "POST",
-      });
-
-      const data = (await res.json()) as IGSubscribeResponse;
+      const res = await fetch(
+        `${IG_GRAPH_API_BASE}/${igUserId}/subscribed_apps?access_token=${accessToken}`
+      );
+      const data = await res.json() as { data?: unknown[]; error?: { message: string; code: number } };
 
       if (data.error) {
-        console.error(`[subscribeToWebhook] Failed: ${data.error.message} (code: ${data.error.code})`);
+        console.warn(
+          `[checkWebhookSubscriptions] Could not check subscriptions for IG user ${igUserId}: ` +
+          `${data.error.message} (code: ${data.error.code})`
+        );
       } else {
-        console.log(`[subscribeToWebhook] Subscribed IG user ${igUserId} to: ${WEBHOOK_SUBSCRIBED_FIELDS}`);
+        console.log(
+          `[checkWebhookSubscriptions] IG user ${igUserId} subscribed apps:`,
+          JSON.stringify(data.data ?? [])
+        );
+        if (!data.data?.length) {
+          console.warn(
+            `[checkWebhookSubscriptions] ⚠️  No subscribed apps found for IG user ${igUserId}. ` +
+            `Make sure your webhook is configured in the Meta App Dashboard under ` +
+            `Products → Webhooks → Instagram, with "comments" and "messages" fields checked.`
+          );
+        }
       }
     } catch (err) {
-      console.error(`[subscribeToWebhook] Unexpected error:`, err instanceof Error ? err.message : err);
+      console.error(
+        `[checkWebhookSubscriptions] Unexpected error:`,
+        err instanceof Error ? err.message : err
+      );
     }
   }
 
@@ -171,10 +188,10 @@ export class InstagramService {
       throw new Error("No Instagram account connected");
     }
 
-    // Best-effort: re-subscribe to webhooks on each sync (no-op if already subscribed)
+    // Best-effort: check webhook subscriptions on each sync (diagnostic)
     if (igAccount.instagramUserId && igAccount.accessToken) {
-      this.subscribeToWebhook(igAccount.instagramUserId, igAccount.accessToken).catch((err) => {
-        console.error("[fetchAndSyncReels] Webhook re-subscription failed:", err);
+      this.checkWebhookSubscriptions(igAccount.instagramUserId, igAccount.accessToken).catch((err) => {
+        console.error("[fetchAndSyncReels] Webhook subscription check failed:", err);
       });
     }
 
