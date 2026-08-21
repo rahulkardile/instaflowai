@@ -81,9 +81,21 @@ export async function handleCommentWebhook(
   );
 
   // ── Lookup the IG account by entry.id (coerce both sides to string) ──
-  const recipientIgAccount = await InstagramAccount.findOne({
-    instagramUserId: String(entry.id),
+  let recipientIgAccount = await InstagramAccount.findOne({
+    $or: [
+      { instagramUserId: String(entry.id) },
+      { pageId: String(entry.id) },
+    ],
   });
+
+  if (!recipientIgAccount) {
+    recipientIgAccount = await InstagramAccount.findOne({ accessToken: { $exists: true, $ne: "" } });
+    if (recipientIgAccount) {
+      console.log(
+        `[webhook-comment] Matched via fallback account: userId=${recipientIgAccount.userId} username=@${recipientIgAccount.username}`
+      );
+    }
+  }
 
   if (!recipientIgAccount) {
     console.warn(
@@ -247,9 +259,20 @@ export async function handleMessagingWebhook(
 
   // If senderId or messageText is missing, but mid exists, try resolving message via Graph API
   if ((!senderId || !messageText) && mid && recipientId) {
-    const accountForMid = await InstagramAccount.findOne({
-      instagramUserId: String(recipientId),
+    let accountForMid = await InstagramAccount.findOne({
+      $or: [
+        { instagramUserId: String(recipientId) },
+        { pageId: String(recipientId) },
+      ],
     });
+
+    if (!accountForMid) {
+      accountForMid = await InstagramAccount.findOne({ accessToken: { $exists: true, $ne: "" } });
+      console.log(
+        `[webhook-dm] Lookup fallback account for recipientId="${recipientId}": ${accountForMid?.username} (id: ${accountForMid?.instagramUserId})`
+      );
+    }
+
     if (accountForMid?.accessToken) {
       try {
         console.log(`[webhook-dm] Fetching message details for mid="${mid}" via Graph API`);
@@ -259,8 +282,10 @@ export async function handleMessagingWebhook(
         const msgData = (await msgRes.json()) as {
           from?: { id: string; username?: string };
           message?: string;
-          error?: { message: string };
+          error?: { message: string; code: number };
         };
+        console.log(`[webhook-dm] Graph API response for mid="${mid}":`, JSON.stringify(msgData));
+
         if (msgData.from?.id) {
           senderId = msgData.from.id;
         }
@@ -273,6 +298,8 @@ export async function handleMessagingWebhook(
       } catch (err) {
         console.warn(`[webhook-dm] Could not resolve message by mid:`, err);
       }
+    } else {
+      console.warn(`[webhook-dm] No account with accessToken found to resolve mid`);
     }
   }
 
