@@ -93,10 +93,25 @@ export async function getReels(req: Request, res: Response): Promise<void> {
 
 export async function getAccount(req: Request, res: Response): Promise<void> {
   try {
-    const igAccount = await InstagramAccount.findOne({ userId: req.user!.userId }).select(
-      "instagramUserId username createdAt tokenExpiresAt"
-    );
-    res.status(200).json({ success: true, data: igAccount });
+    const igAccount = await InstagramAccount.findOne({ userId: req.user!.userId });
+    if (igAccount?.instagramUserId && igAccount.accessToken) {
+      instagramService
+        .subscribeWebhookApp(igAccount.instagramUserId, igAccount.accessToken)
+        .catch((err) => {
+          console.error("[getAccount] Auto subscribe webhook failed:", err);
+        });
+    }
+    res.status(200).json({
+      success: true,
+      data: igAccount
+        ? {
+            instagramUserId: igAccount.instagramUserId,
+            username: igAccount.username,
+            createdAt: igAccount.createdAt,
+            tokenExpiresAt: igAccount.tokenExpiresAt,
+          }
+        : null,
+    });
   } catch (error) {
     res.status(500).json({
       success: false,

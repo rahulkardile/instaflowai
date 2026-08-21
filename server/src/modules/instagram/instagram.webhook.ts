@@ -7,6 +7,7 @@ import {
   EXECUTION_STATUS,
   AUTOMATION_TYPE,
   WEBHOOK_FIELD,
+  IG_GRAPH_API_BASE,
 } from "../../constants";
 import type {
   WebhookEntry,
@@ -235,13 +236,45 @@ export async function handleMessagingWebhook(
     return;
   }
 
-  const senderId = messagingEvent.sender?.id;
+  let senderId = messagingEvent.sender?.id;
   const recipientId = messagingEvent.recipient?.id ?? entry.id;
-  const messageText = messagingEvent.message?.text ?? messagingEvent.message_edit?.text;
+  let messageText = messagingEvent.message?.text ?? messagingEvent.message_edit?.text;
+  const mid = messagingEvent.message?.mid ?? messagingEvent.message_edit?.mid;
 
   console.log(
-    `[webhook-dm] Received — senderId="${senderId}" recipientId="${recipientId}" text="${messageText}"`
+    `[webhook-dm] Received — senderId="${senderId}" recipientId="${recipientId}" text="${messageText}" mid="${mid}"`
   );
+
+  // If senderId or messageText is missing, but mid exists, try resolving message via Graph API
+  if ((!senderId || !messageText) && mid && recipientId) {
+    const accountForMid = await InstagramAccount.findOne({
+      instagramUserId: String(recipientId),
+    });
+    if (accountForMid?.accessToken) {
+      try {
+        console.log(`[webhook-dm] Fetching message details for mid="${mid}" via Graph API`);
+        const msgRes = await fetch(
+          `${IG_GRAPH_API_BASE}/${mid}?fields=id,created_time,from,to,message&access_token=${accountForMid.accessToken}`
+        );
+        const msgData = (await msgRes.json()) as {
+          from?: { id: string; username?: string };
+          message?: string;
+          error?: { message: string };
+        };
+        if (msgData.from?.id) {
+          senderId = msgData.from.id;
+        }
+        if (msgData.message) {
+          messageText = msgData.message;
+        }
+        console.log(
+          `[webhook-dm] Resolved via Graph API — senderId="${senderId}" text="${messageText}"`
+        );
+      } catch (err) {
+        console.warn(`[webhook-dm] Could not resolve message by mid:`, err);
+      }
+    }
+  }
 
   if (!senderId || !messageText) {
     console.log(
