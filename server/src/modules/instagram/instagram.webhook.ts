@@ -312,9 +312,23 @@ export async function handleMessagingWebhook(
   }
 
   // ── Lookup IG account by recipientId (coerce to string) ──
-  const igAccount = await InstagramAccount.findOne({
-    instagramUserId: String(recipientId),
+  let igAccount = await InstagramAccount.findOne({
+    $or: [
+      { instagramUserId: String(recipientId) },
+      { pageId: String(recipientId) },
+    ],
   });
+
+  if (!igAccount) {
+    igAccount = await InstagramAccount.findOne({ accessToken: { $exists: true, $ne: "" } });
+    if (igAccount && recipientId) {
+      console.log(
+        `[webhook-dm] Syncing instagramUserId to "${recipientId}" for @${igAccount.username}`
+      );
+      igAccount.instagramUserId = String(recipientId);
+      await igAccount.save().catch(() => {});
+    }
+  }
 
   if (!igAccount) {
     console.warn(
