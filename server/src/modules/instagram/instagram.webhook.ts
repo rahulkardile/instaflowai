@@ -237,14 +237,17 @@ export async function handleMessagingWebhook(
 
   const senderId = messagingEvent.sender?.id;
   const recipientId = messagingEvent.recipient?.id ?? entry.id;
-  const messageText = messagingEvent.message?.text;
+  const messageText = messagingEvent.message?.text ?? messagingEvent.message_edit?.text;
 
   console.log(
     `[webhook-dm] Received — senderId="${senderId}" recipientId="${recipientId}" text="${messageText}"`
   );
 
   if (!senderId || !messageText) {
-    console.log("[webhook-dm] Skipping — missing sender or message text");
+    console.log(
+      `[webhook-dm] Skipping — missing senderId ("${senderId}") or messageText ("${messageText}"). ` +
+      `Raw event: ${JSON.stringify(messagingEvent)}`
+    );
     return;
   }
 

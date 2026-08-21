@@ -134,6 +134,11 @@ export interface WebhookMessagingEvent {
     text?: string;
     is_echo?: boolean;
   };
+  message_edit?: {
+    mid?: string;
+    text?: string;
+    num_edit?: number;
+  };
 }
 
 // ─── Mapped Reel (client-facing shape) ────────────────────────────────────
