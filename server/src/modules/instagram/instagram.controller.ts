@@ -4,7 +4,7 @@ import { handleCommentWebhook, handleMessagingWebhook } from "./instagram.webhoo
 import InstagramAccount from "../../models/InstagramAccounts";
 import ExecutionLog from "../../models/ExecutionLog";
 import { metaFetch, redactMetaSecrets } from "../../utils/metaFetch";
-import { EXECUTION_ACTION, EXECUTION_STATUS, WEBHOOK_FIELD, IG_GRAPH_API_BASE, META_API_VERSION } from "../../constants";
+import { EXECUTION_ACTION, EXECUTION_STATUS, WEBHOOK_FIELD, IG_GRAPH_API_BASE, FB_GRAPH_API_BASE, META_API_VERSION } from "../../constants";
 import type { ApiResponse } from "../../types/common.types";
 import type { MappedReel, WebhookEntry } from "../../types/instagram.types";
 
@@ -376,8 +376,9 @@ export async function verifyAccess(req: Request, res: Response): Promise<void> {
     }
 
     // 4. Check subscribed apps (webhook subscription)
+    // IMPORTANT: subscribed_apps must use graph.facebook.com, not graph.instagram.com
     const subsRes = await metaFetch(
-      `${IG_GRAPH_API_BASE}/${igAccount.instagramUserId}/subscribed_apps?access_token=${igAccount.accessToken}`,
+      `${FB_GRAPH_API_BASE}/${igAccount.instagramUserId}/subscribed_apps?access_token=${igAccount.accessToken}`,
       undefined,
       "verify.subscriptions"
     );

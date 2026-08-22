@@ -4,6 +4,7 @@ import { User } from "../../models/User";
 import { metaFetch } from "../../utils/metaFetch";
 import {
   IG_GRAPH_API_BASE,
+  FB_GRAPH_API_BASE,
   IG_OAUTH_BASE_URL,
   IG_SHORT_TOKEN_URL,
   IG_LONG_TOKEN_URL,
@@ -158,7 +159,9 @@ export class InstagramService {
     try {
       console.log(`[subscribeWebhookApp] Subscribing IG user ${igUserId} to fields: ${WEBHOOK_SUBSCRIBED_FIELDS}`);
       
-      const postRes = await metaFetch(`${IG_GRAPH_API_BASE}/${igUserId}/subscribed_apps`, {
+      // IMPORTANT: subscribed_apps must use graph.facebook.com, NOT graph.instagram.com
+      // graph.instagram.com returns 404 for this endpoint even with valid tokens.
+      const postRes = await metaFetch(`${FB_GRAPH_API_BASE}/${igUserId}/subscribed_apps`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
@@ -180,7 +183,7 @@ export class InstagramService {
 
       // Diagnostic: verify subscribed fields after subscribing
       const getRes = await metaFetch(
-        `${IG_GRAPH_API_BASE}/${igUserId}/subscribed_apps?access_token=${accessToken}`,
+        `${FB_GRAPH_API_BASE}/${igUserId}/subscribed_apps?access_token=${accessToken}`,
         undefined,
         "webhook.subscriptions"
       );
@@ -299,7 +302,7 @@ export class InstagramService {
   ): Promise<IGApiResponse> {
     console.log(`[sendPrivateDM] Sending private reply for comment=${commentId} via IG user ${igUserId}`);
 
-    const res = await metaFetch(`${IG_GRAPH_API_BASE}/${igUserId}/messages`, {
+    const res = await metaFetch(`${FB_GRAPH_API_BASE}/${igUserId}/messages`, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${accessToken}`,
@@ -336,14 +339,18 @@ export class InstagramService {
   ): Promise<IGApiResponse> {
     console.log(`[sendDMReply] Replying to IGSID=${recipientId} via IG user ${igUserId}`);
 
-    const res = await metaFetch(`${IG_GRAPH_API_BASE}/${igUserId}/messages`, {
+    // IMPORTANT: /{igUserId}/messages must use graph.facebook.com for the Messenger API.
+    // Authorization must be in the Bearer header, not in the JSON body for v25+.
+    const res = await metaFetch(`${FB_GRAPH_API_BASE}/${igUserId}/messages`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
         recipient: { id: recipientId },
         message: { text: message },
         messaging_type: "RESPONSE",
-        access_token: accessToken,
       }),
     }, "messages.dm_reply");
 

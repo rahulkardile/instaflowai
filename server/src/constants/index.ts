@@ -1,6 +1,9 @@
 // ─── Instagram Graph API ───────────────────────────────────────────────────
 export const META_API_VERSION = "v25.0" as const;
 export const IG_GRAPH_API_BASE = "https://graph.instagram.com/v25.0" as const;
+// graph.facebook.com is required for certain endpoints (e.g. /{ig-user-id}/subscribed_apps,
+// app-level subscriptions) even when using the Instagram Business Login flow.
+export const FB_GRAPH_API_BASE = "https://graph.facebook.com/v25.0" as const;
 
 export const IG_OAUTH_BASE_URL = "https://www.instagram.com/oauth/authorize" as const;
 export const IG_SHORT_TOKEN_URL = "https://api.instagram.com/oauth/access_token" as const;
