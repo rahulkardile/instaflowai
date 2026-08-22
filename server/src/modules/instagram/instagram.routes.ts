@@ -14,6 +14,7 @@ import {
   verifyAccess,
   verifyWebhook,
   receiveWebhook,
+  simulateWebhook,
 } from "./instagram.controller";
 
 const instagramRoutes = Router();
@@ -38,5 +39,8 @@ instagramRoutes.post("/message", authMiddleware, sendMessage);
 // ─── Webhooks (public — called by Meta) ──────────────────────────────────
 instagramRoutes.get("/webhook", verifyWebhook);
 instagramRoutes.post("/webhook", receiveWebhook);
+
+// ─── Debug / Testing ──────────────────────────────────────────────────────
+instagramRoutes.post("/simulate-webhook", authMiddleware, simulateWebhook);
 
 export { instagramRoutes };

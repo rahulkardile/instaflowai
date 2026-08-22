@@ -306,7 +306,7 @@ export class InstagramService {
   ): Promise<IGApiResponse> {
     console.log(`[sendPrivateDM] Sending private reply for comment=${commentId} via IG user ${igUserId}`);
 
-    const res = await metaFetch(`${FB_GRAPH_API_BASE}/${igUserId}/messages`, {
+    const res = await metaFetch(`${IG_GRAPH_API_BASE}/${igUserId}/messages`, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${accessToken}`,
@@ -343,9 +343,9 @@ export class InstagramService {
   ): Promise<IGApiResponse> {
     console.log(`[sendDMReply] Replying to IGSID=${recipientId} via IG user ${igUserId}`);
 
-    // IMPORTANT: /{igUserId}/messages must use graph.facebook.com for the Messenger API.
-    // Authorization must be in the Bearer header, not in the JSON body for v25+.
-    const res = await metaFetch(`${FB_GRAPH_API_BASE}/${igUserId}/messages`, {
+    // For Instagram Business Login, /{igUserId}/messages is on graph.instagram.com.
+    // Authorization token goes in Bearer header (v25+).
+    const res = await metaFetch(`${IG_GRAPH_API_BASE}/${igUserId}/messages`, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${accessToken}`,

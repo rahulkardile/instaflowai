@@ -513,3 +513,71 @@ export async function receiveWebhook(req: Request, res: Response): Promise<void>
     console.error("[webhook] Unhandled error:", error);
   }
 }
+
+// ─── POST /simulate-webhook ───────────────────────────────────────────────
+// Auth-protected debug endpoint. Fires a fake webhook event through the
+// full automation pipeline so you can verify automation works without
+// waiting for Meta to deliver a real event.
+//
+// Body examples:
+//   { "type": "comment", "mediaId": "123", "text": "hello", "commentId": "456" }
+//   { "type": "dm", "text": "hi there" }
+
+export async function simulateWebhook(req: Request, res: Response): Promise<void> {
+  try {
+    const igAccount = await InstagramAccount.findOne({ userId: req.user!.userId });
+    if (!igAccount) {
+      res.status(400).json({ success: false, message: "No Instagram account connected" });
+      return;
+    }
+
+    const { type, mediaId, text = "test", commentId } = req.body as {
+      type?: string;
+      mediaId?: string;
+      text?: string;
+      commentId?: string;
+    };
+
+    const fakeEntryId = igAccount.instagramUserId ?? "unknown";
+
+    if (type === "dm") {
+      console.log(`[simulate-webhook] Firing fake DM event for igUser=${fakeEntryId}`);
+      const { handleMessagingWebhook } = await import("./instagram.webhook");
+      await handleMessagingWebhook(
+        {
+          sender: { id: "FAKE_SENDER_IGSID_000" },
+          recipient: { id: fakeEntryId },
+          message: { mid: "FAKE_MID_000", text },
+        } as any,
+        { id: fakeEntryId } as any
+      );
+      res.status(200).json({ success: true, message: "Fake DM event fired — check server logs" });
+      return;
+    }
+
+    // default: comment
+    const fakeMediaId = mediaId ?? (igAccount as any).reelId ?? "FAKE_MEDIA_000";
+    const fakeCommentId = commentId ?? "FAKE_COMMENT_000";
+    console.log(`[simulate-webhook] Firing fake COMMENT event for igUser=${fakeEntryId} media=${fakeMediaId}`);
+    const { handleCommentWebhook } = await import("./instagram.webhook");
+    await handleCommentWebhook(
+      {
+        field: "comments",
+        value: {
+          id: fakeCommentId,
+          text,
+          from: { id: "FAKE_COMMENTER_IGSID_000", username: "test_user" },
+          media: { id: fakeMediaId },
+        },
+      } as any,
+      { id: fakeEntryId } as any
+    );
+    res.status(200).json({ success: true, message: "Fake COMMENT event fired — check server logs and execution logs" });
+  } catch (error) {
+    console.error("[simulate-webhook] Error:", error);
+    res.status(500).json({
+      success: false,
+      message: error instanceof Error ? error.message : "Simulation failed",
+    });
+  }
+}
