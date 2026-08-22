@@ -101,13 +101,13 @@ export async function handleCommentWebhook(
     `commenter_igsid="${sender_id}" from=@${commenter_username} text="${message}"`
   );
 
-  // ── Lookup the IG account by entry.id ──
+  // ── Lookup the IG account by entry.id (most recently updated wins) ──
   let recipientIgAccount = await InstagramAccount.findOne({
     $or: [
       { instagramUserId: String(entry.id) },
       { pageId: String(entry.id) },
     ],
-  });
+  }).sort({ updatedAt: -1 });
 
   if (!recipientIgAccount) {
     recipientIgAccount = await InstagramAccount.findOne({ accessToken: { $exists: true, $ne: "" } });
@@ -145,21 +145,6 @@ export async function handleCommentWebhook(
   console.log(`[webhook-comment] COMMENT_RECEIVED log saved for user ${recipientIgAccount.userId}`);
 
   // ── Query automations for this user (by userId — stable across reconnects) ──
-
-  // DEBUG: log all automations for this user regardless of filters
-  const _allAutomations = await Automation.find({ userId: recipientIgAccount.userId }).lean();
-  console.log(
-    `[webhook-comment] DEBUG all automations for user ${recipientIgAccount.userId}:`,
-    JSON.stringify(_allAutomations.map((a: any) => ({
-      _id: a._id,
-      userId: a.userId,
-      instagramAccountId: a.instagramAccountId,
-      type: a.type,
-      enabled: a.enabled,
-      keywords: a.keywords,
-    })))
-  );
-
   const automations = await Automation.find({
     userId: recipientIgAccount.userId,
     type: AUTOMATION_TYPE.COMMENT,
@@ -329,7 +314,7 @@ export async function handleMessagingWebhook(
         { instagramUserId: String(recipientId) },
         { pageId: String(recipientId) },
       ],
-    });
+    }).sort({ updatedAt: -1 });
 
     if (!accountForMid) {
       accountForMid = await InstagramAccount.findOne({ accessToken: { $exists: true, $ne: "" } });
@@ -380,16 +365,16 @@ export async function handleMessagingWebhook(
     return;
   }
 
-  // ── Lookup IG account by recipientId ──────────────────────────────────────
+  // ── Lookup IG account by recipientId (most recently updated wins) ────────────────
   let igAccount = await InstagramAccount.findOne({
     $or: [
       { instagramUserId: String(recipientId) },
       { pageId: String(recipientId) },
     ],
-  });
+  }).sort({ updatedAt: -1 });
 
   if (!igAccount) {
-    igAccount = await InstagramAccount.findOne({ accessToken: { $exists: true, $ne: "" } });
+    igAccount = await InstagramAccount.findOne({ accessToken: { $exists: true, $ne: "" } }).sort({ updatedAt: -1 });
     if (igAccount && recipientId) {
       console.log(
         `[webhook-dm] Syncing instagramUserId to "${recipientId}" for @${igAccount.username}`
