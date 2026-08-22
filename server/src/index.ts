@@ -27,10 +27,7 @@ if (process.env.NODE_ENV === "production" && JWT_SECRET.length < 32) {
   process.exit(1);
 }
 
-
-const allowedOrigins = process.env.CLIENT_URL
-  ? process.env.CLIENT_URL.split(",").map((url) => url.trim().replace(/\/$/, ""))
-  : ["http://localhost:5173"];
+const allowedOrigins = process.env.CLIENT_URL ? process.env.CLIENT_URL.split(",").map((url) => url.trim().replace(/\/$/, "")) : ["http://localhost:5173"];
 
 const app = express();
 
@@ -52,12 +49,9 @@ app.use(
 app.use(helmet());
 app.use(compression());
 app.use(express.json({ limit: "1mb" }));
-app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev")); // Structured HTTP logs
+app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
 
-// ─── Global API rate limiter (skips /webhook) ─────────────────────────────
 app.use("/api", apiLimiter);
-
-// ─── Routes ───────────────────────────────────────────────────────────────
 
 app.use("/api/health", healthRoutes);
 app.use("/api/auth", authRoutes);
@@ -65,10 +59,7 @@ app.use("/api/instagram", instagramRoutes);
 app.use("/api/automations", automationRoutes);
 app.use("/api/admin", adminRoutes);
 
-// ─── Global error handler (must be last) ─────────────────────────────────
 app.use(errorHandler);
-
-// ─── Bootstrap ────────────────────────────────────────────────────────────
 
 const PORT = Number(process.env.PORT) || 5000;
 

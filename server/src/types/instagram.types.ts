@@ -67,6 +67,8 @@ export interface IGMediaResponse {
 // ─── Generic API Error Shape ───────────────────────────────────────────────
 export interface IGApiResponse {
   id?: string;
+  recipient_id?: string;
+  message_id?: string;
   error?: { message: string; code: number };
 }
 

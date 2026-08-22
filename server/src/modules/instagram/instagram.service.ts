@@ -274,33 +274,29 @@ export class InstagramService {
   }
 
   /**
-   * Send a private DM to a commenter using their Instagram-Scoped ID (IGSID).
+   * Send the one allowed private reply to a comment.
    *
-   * ⚠️  For the Instagram Login API (graph.instagram.com), the recipient must
-   * be identified by their IGSID (`from.id` from the comment webhook), NOT by
-   * `comment_id`. The `comment_id` recipient field only works with the legacy
-   * Facebook Login / Messenger Platform API.
-   *
-   * Requires: instagram_business_manage_messages permission.
-   * Only works within 24 hours of the user having initiated contact (or if
-   * the app has a message tag approved by Meta).
+   * For comment-triggered DMs, Meta requires recipient.comment_id. Using the
+   * commenter's IGSID here is treated like a normal DM and fails unless the
+   * user already opened the messaging window.
    */
   async sendPrivateDM(
     igUserId: string,
-    commenterIgsid: string,
+    commentId: string,
     message: string,
     accessToken: string
   ): Promise<IGApiResponse> {
-    console.log(`[sendPrivateDM] Sending DM to IGSID=${commenterIgsid} via IG user ${igUserId}`);
+    console.log(`[sendPrivateDM] Sending private reply for comment=${commentId} via IG user ${igUserId}`);
 
     const res = await fetch(`${IG_GRAPH_API_BASE}/${igUserId}/messages`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
-        recipient: { id: commenterIgsid },
+        recipient: { comment_id: commentId },
         message: { text: message },
-        messaging_type: "RESPONSE",
-        access_token: accessToken,
       }),
     });
 

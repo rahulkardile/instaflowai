@@ -217,43 +217,14 @@ export async function handleCommentWebhook(
       });
     }
 
-    // ── Send Private DM to commenter ──────────────────────────────────────────
+    // ── Send private reply DM to commenter ───────────────────────────────────
     //
-    // IMPORTANT: sender_id here is the commenter's IGSID (from.id in the webhook
-    // payload) — this is what the Instagram Login API requires as recipient.id.
-    //
-    // The old code mistakenly passed comment_id as recipient.comment_id, which
-    // is the Messenger/Facebook Login API format and does NOT work with
-    // graph.instagram.com.
-    //
-    // Limitation (Development mode): This API only works for users who have
-    // previously messaged the business account (opening a 24-hour window)
-    // OR once the app has Advanced Access for instagram_business_manage_messages.
+    // For comment-triggered DMs, Meta's private reply flow uses comment_id.
+    // This can initiate the first DM from a public comment, subject to Meta's
+    // one-private-reply-per-comment and 7-day window limitations.
     if (automation.dmMessage) {
       let dmStatus: ExecutionStatus = EXECUTION_STATUS.SUCCESS;
       let dmError = "";
-
-      if (!sender_id) {
-        // Meta does not always include from.id for private/personal account commenters.
-        // Without the IGSID we cannot send the DM.
-        const noIgsidErr =
-          "Commenter IGSID (from.id) missing from webhook payload — DM cannot be sent without it. " +
-          "This typically happens when Meta omits it for personal account commenters.";
-        console.warn(`[webhook-comment] Automation ${automation._id} — DM skipped: ${noIgsidErr}`);
-        await ExecutionLog.create({
-          automationId: automation._id,
-          userId: igAccount.userId,
-          instagramAccountId: igAccount._id,
-          commenterId: sender_id,
-          commenterUsername: commenter_username,
-          commentId: comment_id,
-          commentText: message,
-          action: EXECUTION_ACTION.SEND_DM,
-          status: EXECUTION_STATUS.FAILED,
-          errorMessage: noIgsidErr,
-        });
-        continue;
-      }
 
       if (!igAccount.instagramUserId) {
         dmStatus = EXECUTION_STATUS.FAILED;
@@ -263,7 +234,7 @@ export async function handleCommentWebhook(
         try {
           await instagramService.sendPrivateDM(
             igAccount.instagramUserId,
-            sender_id,          // ← commenter IGSID (from.id), NOT comment_id
+            comment_id,
             automation.dmMessage,
             igAccount.accessToken
           );
