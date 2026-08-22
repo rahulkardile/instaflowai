@@ -376,8 +376,10 @@ export async function verifyAccess(req: Request, res: Response): Promise<void> {
     }
 
     // 4. Check subscribed apps (webhook subscription)
+    // Prefer the manually set env token (same one used in subscribeWebhookApp)
+    const subsToken = process.env.INSTAGRAM_APP_SECREAT_RAHUL_000 ?? igAccount.accessToken;
     const subsRes = await metaFetch(
-      `${IG_GRAPH_API_BASE}/${igAccount.instagramUserId}/subscribed_apps?access_token=${igAccount.accessToken}`,
+      `${IG_GRAPH_API_BASE}/${igAccount.instagramUserId}/subscribed_apps?access_token=${subsToken}`,
       undefined,
       "verify.subscriptions"
     );

@@ -158,14 +158,19 @@ export class InstagramService {
 
     try {
       console.log(`[subscribeWebhookApp] Subscribing IG user ${igUserId} to fields: ${WEBHOOK_SUBSCRIBED_FIELDS}`);
-      
+
+      // Prefer the manually set long-lived token from env (INSTAGRAM_APP_SECREAT_RAHUL_000)
+      // over the OAuth token from DB, as it's the known-good token for the main account.
+      const tokenToUse = process.env.INSTAGRAM_APP_SECREAT_RAHUL_000 ?? accessToken;
+      console.log(`[subscribeWebhookApp] Using token source: ${process.env.INSTAGRAM_APP_SECREAT_RAHUL_000 ? "env(INSTAGRAM_APP_SECREAT_RAHUL_000)" : "db(accessToken)"}`);
+
       // For Instagram Business Login, subscribed_apps uses graph.instagram.com with the Instagram-scoped token.
       const postRes = await metaFetch(`${IG_GRAPH_API_BASE}/${igUserId}/subscribed_apps`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
           subscribed_fields: WEBHOOK_SUBSCRIBED_FIELDS,
-          access_token: accessToken,
+          access_token: tokenToUse,
         }),
       }, "webhook.subscribe");
 
@@ -182,7 +187,7 @@ export class InstagramService {
 
       // Diagnostic: verify subscribed fields after subscribing
       const getRes = await metaFetch(
-        `${IG_GRAPH_API_BASE}/${igUserId}/subscribed_apps?access_token=${accessToken}`,
+        `${IG_GRAPH_API_BASE}/${igUserId}/subscribed_apps?access_token=${tokenToUse}`,
         undefined,
         "webhook.subscriptions"
       );
