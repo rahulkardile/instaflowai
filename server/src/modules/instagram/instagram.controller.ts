@@ -542,7 +542,6 @@ export async function simulateWebhook(req: Request, res: Response): Promise<void
 
     if (type === "dm") {
       console.log(`[simulate-webhook] Firing fake DM event for igUser=${fakeEntryId}`);
-      const { handleMessagingWebhook } = await import("./instagram.webhook");
       await handleMessagingWebhook(
         {
           sender: { id: "FAKE_SENDER_IGSID_000" },
@@ -559,7 +558,6 @@ export async function simulateWebhook(req: Request, res: Response): Promise<void
     const fakeMediaId = mediaId ?? (igAccount as any).reelId ?? "FAKE_MEDIA_000";
     const fakeCommentId = commentId ?? "FAKE_COMMENT_000";
     console.log(`[simulate-webhook] Firing fake COMMENT event for igUser=${fakeEntryId} media=${fakeMediaId}`);
-    const { handleCommentWebhook } = await import("./instagram.webhook");
     await handleCommentWebhook(
       {
         field: "comments",
