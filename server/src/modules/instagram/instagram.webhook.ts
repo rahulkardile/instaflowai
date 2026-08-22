@@ -21,6 +21,23 @@ import type { ExecutionStatus } from "../../types/executionLog.types";
 
 const instagramService = new InstagramService();
 
+// ─── Non-actionable messaging event types ─────────────────────────────────────
+//
+// Meta fires these inside the `messages` webhook subscription, but they carry
+// no user-originated text and must NOT trigger automation:
+//   message_edit   – user edited a previously sent message (num_edit ≥ 0)
+//   read/seen      – read receipt (user opened the thread)
+//   delivery       – delivery receipt
+//   echo           – copy of outbound messages sent by the page itself
+//
+function isNonActionableMessagingEvent(event: WebhookMessagingEvent): boolean {
+  if (event.message?.is_echo === true) return true;
+  if (event.message_edit !== undefined) return true;
+  if ((event as Record<string, unknown>).read !== undefined) return true;
+  if ((event as Record<string, unknown>).delivery !== undefined) return true;
+  return false;
+}
+
 // ─── Normalise comment change ──────────────────────────────────────────────
 
 function normaliseCommentChange(change: WebhookChange): NormalisedCommentEvent | null {
@@ -30,6 +47,8 @@ function normaliseCommentChange(change: WebhookChange): NormalisedCommentEvent |
 
   if (change.field === WEBHOOK_FIELD.COMMENTS) {
     const comment_id = val.id ?? val.comment_id ?? "";
+    // sender_id = commenter's Instagram-Scoped ID (IGSID) from from.id
+    // This is required by sendPrivateDM — NOT comment_id
     const sender_id = val.from?.id ?? "";
     const commenter_username = val.from?.username ?? "";
     const message = val.text ?? "";
@@ -77,10 +96,11 @@ export async function handleCommentWebhook(
   const { comment_id, sender_id, commenter_username, message, media_id } = event;
 
   console.log(
-    `[webhook-comment] Parsed — comment_id="${comment_id}" media_id="${media_id}" from=@${commenter_username} text="${message}"`
+    `[webhook-comment] Parsed — comment_id="${comment_id}" media_id="${media_id}" ` +
+    `commenter_igsid="${sender_id}" from=@${commenter_username} text="${message}"`
   );
 
-  // ── Lookup the IG account by entry.id (coerce both sides to string) ──
+  // ── Lookup the IG account by entry.id ──
   let recipientIgAccount = await InstagramAccount.findOne({
     $or: [
       { instagramUserId: String(entry.id) },
@@ -99,33 +119,31 @@ export async function handleCommentWebhook(
 
   if (!recipientIgAccount) {
     console.warn(
-      `[webhook-comment] ⚠️  No InstagramAccount found for entry.id="${entry.id}". ` +
-      `Make sure instagramUserId is stored as a string matching exactly this value.`
+      `[webhook-comment] ⚠️  No InstagramAccount found for entry.id="${entry.id}".`
     );
-  } else {
-    console.log(
-      `[webhook-comment] ✅ Matched IG account: userId=${recipientIgAccount.userId} ` +
-      `username=@${recipientIgAccount.username}`
-    );
-
-    // Log the raw comment received event
-    await ExecutionLog.create({
-      userId: recipientIgAccount.userId,
-      instagramAccountId: recipientIgAccount._id,
-      commenterId: sender_id,
-      commenterUsername: commenter_username,
-      commentId: comment_id,
-      commentText: message,
-      action: EXECUTION_ACTION.COMMENT_RECEIVED,
-      status: EXECUTION_STATUS.SUCCESS,
-    });
-
-    console.log(`[webhook-comment] COMMENT_RECEIVED log saved for user ${recipientIgAccount.userId}`);
+    return;
   }
 
-  if (!recipientIgAccount) return;
+  console.log(
+    `[webhook-comment] ✅ Matched IG account: userId=${recipientIgAccount.userId} ` +
+    `username=@${recipientIgAccount.username}`
+  );
 
-  // ── FIX: Query automations ONLY for this specific IG account ──
+  // Log the raw comment received event
+  await ExecutionLog.create({
+    userId: recipientIgAccount.userId,
+    instagramAccountId: recipientIgAccount._id,
+    commenterId: sender_id,
+    commenterUsername: commenter_username,
+    commentId: comment_id,
+    commentText: message,
+    action: EXECUTION_ACTION.COMMENT_RECEIVED,
+    status: EXECUTION_STATUS.SUCCESS,
+  });
+
+  console.log(`[webhook-comment] COMMENT_RECEIVED log saved for user ${recipientIgAccount.userId}`);
+
+  // ── Query automations for this specific IG account ──
   const automations = await Automation.find({
     instagramAccountId: recipientIgAccount._id,
     type: AUTOMATION_TYPE.COMMENT,
@@ -167,7 +185,7 @@ export async function handleCommentWebhook(
       continue;
     }
 
-    // ── Reply to comment ──
+    // ── Reply to comment publicly ──
     if (automation.commentReply) {
       let replyStatus: ExecutionStatus = EXECUTION_STATUS.SUCCESS;
       let replyError = "";
@@ -199,26 +217,62 @@ export async function handleCommentWebhook(
       });
     }
 
-    // ── Send Private DM to commenter ──
+    // ── Send Private DM to commenter ──────────────────────────────────────────
+    //
+    // IMPORTANT: sender_id here is the commenter's IGSID (from.id in the webhook
+    // payload) — this is what the Instagram Login API requires as recipient.id.
+    //
+    // The old code mistakenly passed comment_id as recipient.comment_id, which
+    // is the Messenger/Facebook Login API format and does NOT work with
+    // graph.instagram.com.
+    //
+    // Limitation (Development mode): This API only works for users who have
+    // previously messaged the business account (opening a 24-hour window)
+    // OR once the app has Advanced Access for instagram_business_manage_messages.
     if (automation.dmMessage) {
       let dmStatus: ExecutionStatus = EXECUTION_STATUS.SUCCESS;
       let dmError = "";
 
-      try {
-        if (!igAccount.instagramUserId) {
-          throw new Error("instagramUserId missing — reconnect Instagram");
-        }
-        await instagramService.sendPrivateDM(
-          igAccount.instagramUserId,
-          comment_id,
-          automation.dmMessage,
-          igAccount.accessToken
-        );
-        console.log(`[webhook-comment] ✅ Private DM sent for automation ${automation._id}`);
-      } catch (err) {
+      if (!sender_id) {
+        // Meta does not always include from.id for private/personal account commenters.
+        // Without the IGSID we cannot send the DM.
+        const noIgsidErr =
+          "Commenter IGSID (from.id) missing from webhook payload — DM cannot be sent without it. " +
+          "This typically happens when Meta omits it for personal account commenters.";
+        console.warn(`[webhook-comment] Automation ${automation._id} — DM skipped: ${noIgsidErr}`);
+        await ExecutionLog.create({
+          automationId: automation._id,
+          userId: igAccount.userId,
+          instagramAccountId: igAccount._id,
+          commenterId: sender_id,
+          commenterUsername: commenter_username,
+          commentId: comment_id,
+          commentText: message,
+          action: EXECUTION_ACTION.SEND_DM,
+          status: EXECUTION_STATUS.FAILED,
+          errorMessage: noIgsidErr,
+        });
+        continue;
+      }
+
+      if (!igAccount.instagramUserId) {
         dmStatus = EXECUTION_STATUS.FAILED;
-        dmError = err instanceof Error ? err.message : "Unknown error";
-        console.error(`[webhook-comment] ❌ Private DM FAILED: ${dmError}`);
+        dmError = "instagramUserId missing — reconnect Instagram";
+        console.warn(`[webhook-comment] Automation ${automation._id} — DM skipped: ${dmError}`);
+      } else {
+        try {
+          await instagramService.sendPrivateDM(
+            igAccount.instagramUserId,
+            sender_id,          // ← commenter IGSID (from.id), NOT comment_id
+            automation.dmMessage,
+            igAccount.accessToken
+          );
+          console.log(`[webhook-comment] ✅ Private DM sent for automation ${automation._id}`);
+        } catch (err) {
+          dmStatus = EXECUTION_STATUS.FAILED;
+          dmError = err instanceof Error ? err.message : "Unknown error";
+          console.error(`[webhook-comment] ❌ Private DM FAILED: ${dmError}`);
+        }
       }
 
       await ExecutionLog.create({
@@ -243,21 +297,44 @@ export async function handleMessagingWebhook(
   messagingEvent: WebhookMessagingEvent,
   entry: WebhookEntry
 ): Promise<void> {
-  if (messagingEvent.message?.is_echo) {
-    console.log("[webhook-dm] Skipping echo message");
+
+  // ── Immediately discard non-actionable system events ──────────────────────
+  //
+  // Meta sends message_edit, read receipts, delivery receipts, and echo events
+  // through the same `messages` webhook subscription as real DMs. We must
+  // filter these out FIRST before attempting any automation logic, because:
+  //  1. They do not contain sender.id or message.text
+  //  2. Attempting Graph API resolution wastes an API call and produces empty data
+  //  3. They must never trigger an auto-reply
+  //
+  if (isNonActionableMessagingEvent(messagingEvent)) {
+    const eventType =
+      messagingEvent.message?.is_echo ? "echo" :
+      messagingEvent.message_edit !== undefined ? "message_edit" :
+      (messagingEvent as Record<string, unknown>).read !== undefined ? "read_receipt" :
+      (messagingEvent as Record<string, unknown>).delivery !== undefined ? "delivery_receipt" :
+      "non_actionable";
+    console.log(
+      `[webhook-dm] Skipping system event type="${eventType}" — ` +
+      `mid="${messagingEvent.message_edit?.mid ?? messagingEvent.message?.mid ?? "n/a"}"`
+    );
     return;
   }
 
+  // ── Extract from a real `messages` event ─────────────────────────────────
   let senderId = messagingEvent.sender?.id;
   const recipientId = messagingEvent.recipient?.id ?? entry.id;
-  let messageText = messagingEvent.message?.text ?? messagingEvent.message_edit?.text;
-  const mid = messagingEvent.message?.mid ?? messagingEvent.message_edit?.mid;
+  let messageText = messagingEvent.message?.text;
+  const mid = messagingEvent.message?.mid;
 
   console.log(
-    `[webhook-dm] Received — senderId="${senderId}" recipientId="${recipientId}" text="${messageText}" mid="${mid}"`
+    `[webhook-dm] Real DM received — senderId="${senderId}" recipientId="${recipientId}" ` +
+    `text="${messageText}" mid="${mid}"`
   );
 
-  // If senderId or messageText is missing, but mid exists, try resolving message via Graph API
+  // ── If sender or text is still missing, try Graph API fallback ───────────
+  // Some Meta API versions omit fields from the webhook but the data is available
+  // by fetching the message object directly.
   if ((!senderId || !messageText) && mid && recipientId) {
     let accountForMid = await InstagramAccount.findOne({
       $or: [
@@ -268,9 +345,12 @@ export async function handleMessagingWebhook(
 
     if (!accountForMid) {
       accountForMid = await InstagramAccount.findOne({ accessToken: { $exists: true, $ne: "" } });
-      console.log(
-        `[webhook-dm] Lookup fallback account for recipientId="${recipientId}": ${accountForMid?.username} (id: ${accountForMid?.instagramUserId})`
-      );
+      if (accountForMid) {
+        console.log(
+          `[webhook-dm] Fallback account for recipientId="${recipientId}": ` +
+          `@${accountForMid.username} (igUserId=${accountForMid.instagramUserId})`
+        );
+      }
     }
 
     if (accountForMid?.accessToken) {
@@ -286,15 +366,13 @@ export async function handleMessagingWebhook(
         };
         console.log(`[webhook-dm] Graph API response for mid="${mid}":`, JSON.stringify(msgData));
 
-        if (msgData.from?.id) {
-          senderId = msgData.from.id;
+        if (msgData.error) {
+          console.warn(`[webhook-dm] Graph API error: ${msgData.error.message} (code ${msgData.error.code})`);
+        } else {
+          if (msgData.from?.id) senderId = msgData.from.id;
+          if (msgData.message) messageText = msgData.message;
+          console.log(`[webhook-dm] Resolved — senderId="${senderId}" text="${messageText}"`);
         }
-        if (msgData.message) {
-          messageText = msgData.message;
-        }
-        console.log(
-          `[webhook-dm] Resolved via Graph API — senderId="${senderId}" text="${messageText}"`
-        );
       } catch (err) {
         console.warn(`[webhook-dm] Could not resolve message by mid:`, err);
       }
@@ -305,13 +383,14 @@ export async function handleMessagingWebhook(
 
   if (!senderId || !messageText) {
     console.log(
-      `[webhook-dm] Skipping — missing senderId ("${senderId}") or messageText ("${messageText}"). ` +
+      `[webhook-dm] Skipping — could not resolve senderId="${senderId}" or ` +
+      `messageText="${messageText}" after Graph API fallback. ` +
       `Raw event: ${JSON.stringify(messagingEvent)}`
     );
     return;
   }
 
-  // ── Lookup IG account by recipientId (coerce to string) ──
+  // ── Lookup IG account by recipientId ──────────────────────────────────────
   let igAccount = await InstagramAccount.findOne({
     $or: [
       { instagramUserId: String(recipientId) },
@@ -332,8 +411,7 @@ export async function handleMessagingWebhook(
 
   if (!igAccount) {
     console.warn(
-      `[webhook-dm] ⚠️  No InstagramAccount found for recipientId="${recipientId}". ` +
-      `Make sure instagramUserId is stored as a string matching exactly this value.`
+      `[webhook-dm] ⚠️  No InstagramAccount found for recipientId="${recipientId}".`
     );
     return;
   }
@@ -359,7 +437,7 @@ export async function handleMessagingWebhook(
     return;
   }
 
-  // ── FIX: Query DM automations ONLY for this specific IG account ──
+  // ── Query DM automations for this specific IG account ──────────────────────
   const automations = await Automation.find({
     instagramAccountId: igAccount._id,
     type: AUTOMATION_TYPE.DM,
@@ -374,7 +452,7 @@ export async function handleMessagingWebhook(
     const hasKeywords = automation.keywords?.length > 0;
     const keywordMatch = hasKeywords
       ? automation.keywords.some((kw: string) =>
-          messageText.toLowerCase().includes(kw.toLowerCase())
+          messageText!.toLowerCase().includes(kw.toLowerCase())
         )
       : true;
 

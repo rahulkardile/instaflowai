@@ -24,6 +24,9 @@ import type {
 } from "../../types/instagram.types";
 
 
+// ─── In-memory dedup guard for subscribeWebhookApp ──────────────────────────
+const _subscribeInProgress = new Set<string>();
+
 export class InstagramService {
   /**
    * Build the Instagram OAuth authorization URL.
@@ -138,6 +141,13 @@ export class InstagramService {
    * and verifies the subscription.
    */
   async subscribeWebhookApp(igUserId: string, accessToken: string): Promise<boolean> {
+    // Prevent duplicate concurrent calls (e.g. getAccount triggers two in parallel)
+    if (_subscribeInProgress.has(igUserId)) {
+      console.log(`[subscribeWebhookApp] Already in progress for IG user ${igUserId} — skipping duplicate`);
+      return false;
+    }
+    _subscribeInProgress.add(igUserId);
+
     try {
       console.log(`[subscribeWebhookApp] Subscribing IG user ${igUserId} to fields: ${WEBHOOK_SUBSCRIBED_FIELDS}`);
       
@@ -161,7 +171,7 @@ export class InstagramService {
         console.log(`[subscribeWebhookApp] ✅ Successfully subscribed IG user ${igUserId}:`, JSON.stringify(postData));
       }
 
-      // Diagnostic check after subscribing
+      // Diagnostic: verify subscribed fields after subscribing
       const getRes = await fetch(
         `${IG_GRAPH_API_BASE}/${igUserId}/subscribed_apps?access_token=${accessToken}`
       );
@@ -175,6 +185,8 @@ export class InstagramService {
         err instanceof Error ? err.message : err
       );
       return false;
+    } finally {
+      _subscribeInProgress.delete(igUserId);
     }
   }
 
@@ -262,24 +274,32 @@ export class InstagramService {
   }
 
   /**
-   * Send a private DM via the Instagram Private Reply API.
-   * Uses `comment_id` as the recipient identifier — this opens a DM thread
-   * to the person who left the comment.
+   * Send a private DM to a commenter using their Instagram-Scoped ID (IGSID).
+   *
+   * ⚠️  For the Instagram Login API (graph.instagram.com), the recipient must
+   * be identified by their IGSID (`from.id` from the comment webhook), NOT by
+   * `comment_id`. The `comment_id` recipient field only works with the legacy
+   * Facebook Login / Messenger Platform API.
+   *
+   * Requires: instagram_business_manage_messages permission.
+   * Only works within 24 hours of the user having initiated contact (or if
+   * the app has a message tag approved by Meta).
    */
   async sendPrivateDM(
     igUserId: string,
-    commentId: string,
+    commenterIgsid: string,
     message: string,
     accessToken: string
   ): Promise<IGApiResponse> {
-    console.log(`[sendPrivateDM] Sending DM to commenter of comment ${commentId} via IG user ${igUserId}`);
+    console.log(`[sendPrivateDM] Sending DM to IGSID=${commenterIgsid} via IG user ${igUserId}`);
 
     const res = await fetch(`${IG_GRAPH_API_BASE}/${igUserId}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        recipient: { comment_id: commentId },
+        recipient: { id: commenterIgsid },
         message: { text: message },
+        messaging_type: "RESPONSE",
         access_token: accessToken,
       }),
     });
@@ -296,7 +316,10 @@ export class InstagramService {
 
   /**
    * Send a DM reply to an incoming DM sender.
-   * Uses the sender's Instagram-scoped user ID as the recipient.
+   * Uses the sender's Instagram-Scoped ID (IGSID) as the recipient.
+   *
+   * messaging_type "RESPONSE" is required by Meta for replies within the
+   * 24-hour user-initiated messaging window.
    */
   async sendDMReply(
     igUserId: string,
@@ -304,7 +327,7 @@ export class InstagramService {
     message: string,
     accessToken: string
   ): Promise<IGApiResponse> {
-    console.log(`[sendDMReply] Replying to ${recipientId} via IG user ${igUserId}`);
+    console.log(`[sendDMReply] Replying to IGSID=${recipientId} via IG user ${igUserId}`);
 
     const res = await fetch(`${IG_GRAPH_API_BASE}/${igUserId}/messages`, {
       method: "POST",
@@ -312,6 +335,7 @@ export class InstagramService {
       body: JSON.stringify({
         recipient: { id: recipientId },
         message: { text: message },
+        messaging_type: "RESPONSE",
         access_token: accessToken,
       }),
     });
