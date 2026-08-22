@@ -145,6 +145,21 @@ export async function handleCommentWebhook(
   console.log(`[webhook-comment] COMMENT_RECEIVED log saved for user ${recipientIgAccount.userId}`);
 
   // ── Query automations for this user (by userId — stable across reconnects) ──
+
+  // DEBUG: log all automations for this user regardless of filters
+  const _allAutomations = await Automation.find({ userId: recipientIgAccount.userId }).lean();
+  console.log(
+    `[webhook-comment] DEBUG all automations for user ${recipientIgAccount.userId}:`,
+    JSON.stringify(_allAutomations.map((a: any) => ({
+      _id: a._id,
+      userId: a.userId,
+      instagramAccountId: a.instagramAccountId,
+      type: a.type,
+      enabled: a.enabled,
+      keywords: a.keywords,
+    })))
+  );
+
   const automations = await Automation.find({
     userId: recipientIgAccount.userId,
     type: AUTOMATION_TYPE.COMMENT,
@@ -159,6 +174,7 @@ export async function handleCommentWebhook(
     console.log(`[webhook-comment] No automations configured for this account — nothing to trigger`);
     return;
   }
+
 
   for (const automation of automations) {
     const reelMatch = !automation.reelId || String(automation.reelId) === String(media_id);

@@ -3,8 +3,9 @@ import { InstagramService } from "./instagram.service";
 import { handleCommentWebhook, handleMessagingWebhook } from "./instagram.webhook";
 import InstagramAccount from "../../models/InstagramAccounts";
 import ExecutionLog from "../../models/ExecutionLog";
+import Automation from "../../models/Automation";
 import { metaFetch, redactMetaSecrets } from "../../utils/metaFetch";
-import { EXECUTION_ACTION, EXECUTION_STATUS, WEBHOOK_FIELD, IG_GRAPH_API_BASE, FB_GRAPH_API_BASE, META_API_VERSION } from "../../constants";
+import { AUTOMATION_TYPE, EXECUTION_ACTION, EXECUTION_STATUS, WEBHOOK_FIELD, IG_GRAPH_API_BASE, FB_GRAPH_API_BASE, META_API_VERSION } from "../../constants";
 import type { ApiResponse } from "../../types/common.types";
 import type { MappedReel, WebhookEntry } from "../../types/instagram.types";
 
@@ -540,6 +541,38 @@ export async function simulateWebhook(req: Request, res: Response): Promise<void
 
     const fakeEntryId = igAccount.instagramUserId ?? "unknown";
 
+    // ── Diagnostic: fetch all automations for this user ──────────────────────
+    const automationType = type === "dm" ? AUTOMATION_TYPE.DM : AUTOMATION_TYPE.COMMENT;
+    const allAutomations = await Automation.find({ userId: req.user!.userId }).lean();
+    const typeAutomations = allAutomations.filter((a: any) => a.type === automationType);
+    const enabledAutomations = typeAutomations.filter((a: any) => a.enabled === true);
+
+    const fakeMediaId = type !== "dm" ? (mediaId ?? (igAccount as any).reelId ?? "FAKE_MEDIA_000") : null;
+    const fakeCommentId = type !== "dm" ? (commentId ?? "FAKE_COMMENT_000") : null;
+
+    // Per-automation match analysis
+    const automationAnalysis = enabledAutomations.map((a: any) => {
+      const reelMatch = !a.reelId || String(a.reelId) === String(fakeMediaId);
+      const hasKeywords = a.keywords?.length > 0;
+      const keywordMatch = hasKeywords
+        ? a.keywords.some((kw: string) => text.toLowerCase().includes(kw.toLowerCase()))
+        : true;
+      const wouldTrigger = reelMatch && keywordMatch;
+      return {
+        _id: a._id,
+        type: a.type,
+        enabled: a.enabled,
+        reelId: a.reelId ?? null,
+        keywords: a.keywords ?? [],
+        reelMatch,
+        keywordMatch,
+        wouldTrigger,
+      };
+    });
+
+    const triggeredCount = automationAnalysis.filter((a) => a.wouldTrigger).length;
+
+    // ── Fire the actual webhook pipeline ─────────────────────────────────────
     if (type === "dm") {
       console.log(`[simulate-webhook] Firing fake DM event for igUser=${fakeEntryId}`);
       await handleMessagingWebhook(
@@ -550,27 +583,49 @@ export async function simulateWebhook(req: Request, res: Response): Promise<void
         } as any,
         { id: fakeEntryId } as any
       );
-      res.status(200).json({ success: true, message: "Fake DM event fired — check server logs" });
-      return;
+    } else {
+      console.log(`[simulate-webhook] Firing fake COMMENT event for igUser=${fakeEntryId} media=${fakeMediaId}`);
+      await handleCommentWebhook(
+        {
+          field: "comments",
+          value: {
+            id: fakeCommentId,
+            text,
+            from: { id: "FAKE_COMMENTER_IGSID_000", username: "test_user" },
+            media: { id: fakeMediaId },
+          },
+        } as any,
+        { id: fakeEntryId } as any
+      );
     }
 
-    // default: comment
-    const fakeMediaId = mediaId ?? (igAccount as any).reelId ?? "FAKE_MEDIA_000";
-    const fakeCommentId = commentId ?? "FAKE_COMMENT_000";
-    console.log(`[simulate-webhook] Firing fake COMMENT event for igUser=${fakeEntryId} media=${fakeMediaId}`);
-    await handleCommentWebhook(
-      {
-        field: "comments",
-        value: {
-          id: fakeCommentId,
-          text,
-          from: { id: "FAKE_COMMENTER_IGSID_000", username: "test_user" },
-          media: { id: fakeMediaId },
+    res.status(200).json({
+      success: true,
+      message: triggeredCount > 0
+        ? `✅ ${triggeredCount} automation(s) triggered successfully`
+        : `⚠️ Event fired but no automations matched — see diagnostics`,
+      diagnostics: {
+        igAccount: {
+          _id: igAccount._id,
+          userId: igAccount.userId,
+          instagramUserId: igAccount.instagramUserId,
+          username: igAccount.username,
         },
-      } as any,
-      { id: fakeEntryId } as any
-    );
-    res.status(200).json({ success: true, message: "Fake COMMENT event fired — check server logs and execution logs" });
+        simulatedEvent: {
+          type: automationType,
+          text,
+          mediaId: fakeMediaId,
+          commentId: fakeCommentId,
+        },
+        automationSummary: {
+          totalForUser: allAutomations.length,
+          ofCorrectType: typeAutomations.length,
+          enabled: enabledAutomations.length,
+          triggered: triggeredCount,
+        },
+        automations: automationAnalysis,
+      },
+    });
   } catch (error) {
     console.error("[simulate-webhook] Error:", error);
     res.status(500).json({
