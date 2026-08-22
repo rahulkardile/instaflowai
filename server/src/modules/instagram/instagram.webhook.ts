@@ -144,15 +144,15 @@ export async function handleCommentWebhook(
 
   console.log(`[webhook-comment] COMMENT_RECEIVED log saved for user ${recipientIgAccount.userId}`);
 
-  // ── Query automations for this specific IG account ──
+  // ── Query automations for this user (by userId — stable across reconnects) ──
   const automations = await Automation.find({
-    instagramAccountId: recipientIgAccount._id,
+    userId: recipientIgAccount.userId,
     type: AUTOMATION_TYPE.COMMENT,
     enabled: true,
   });
 
   console.log(
-    `[webhook-comment] Found ${automations.length} enabled COMMENT automation(s) for account ${recipientIgAccount._id}`
+    `[webhook-comment] Found ${automations.length} enabled COMMENT automation(s) for user ${recipientIgAccount.userId}`
   );
 
   if (automations.length === 0) {
@@ -411,15 +411,15 @@ export async function handleMessagingWebhook(
     return;
   }
 
-  // ── Query DM automations for this specific IG account ──────────────────────
+  // ── Query DM automations for this user (by userId — stable across reconnects) ──
   const automations = await Automation.find({
-    instagramAccountId: igAccount._id,
+    userId: igAccount.userId,
     type: AUTOMATION_TYPE.DM,
     enabled: true,
   });
 
   console.log(
-    `[webhook-dm] Found ${automations.length} enabled DM automation(s) for account ${igAccount._id}`
+    `[webhook-dm] Found ${automations.length} enabled DM automation(s) for user ${igAccount.userId}`
   );
 
   for (const automation of automations) {
