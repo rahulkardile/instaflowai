@@ -275,12 +275,6 @@ export class InstagramService {
   async replyToComment(commentId: string, message: string, accessToken: string): Promise<IGApiResponse> {
     console.log(`[replyToComment] Replying to comment ${commentId}`);
 
-    // Skip actual API call during webhook simulation
-    if (commentId.startsWith("FAKE_COMMENT")) {
-      console.log(`[replyToComment] Skipping Meta API call for fake comment ID`);
-      return { success: true } as any;
-    }
-
     const res = await metaFetch(`${IG_GRAPH_API_BASE}/${commentId}/replies`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -311,12 +305,6 @@ export class InstagramService {
     accessToken: string
   ): Promise<IGApiResponse> {
     console.log(`[sendPrivateDM] Sending private reply for comment=${commentId} via IG user ${igUserId}`);
-
-    // Skip actual API call during webhook simulation
-    if (commentId.startsWith("FAKE_COMMENT")) {
-      console.log(`[sendPrivateDM] Skipping Meta API call for fake comment ID`);
-      return { success: true } as any;
-    }
 
     const res = await metaFetch(`${IG_GRAPH_API_BASE}/${igUserId}/messages`, {
       method: "POST",
@@ -354,12 +342,6 @@ export class InstagramService {
     accessToken: string
   ): Promise<IGApiResponse> {
     console.log(`[sendDMReply] Replying to IGSID=${recipientId} via IG user ${igUserId}`);
-
-    // Skip actual API call during webhook simulation
-    if (recipientId.startsWith("FAKE_SENDER")) {
-      console.log(`[sendDMReply] Skipping Meta API call for fake recipient ID`);
-      return { success: true } as any;
-    }
 
     // For Instagram Business Login, /{igUserId}/messages is on graph.instagram.com.
     // Authorization token goes in Bearer header (v25+).
