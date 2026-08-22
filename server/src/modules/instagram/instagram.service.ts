@@ -159,9 +159,8 @@ export class InstagramService {
     try {
       console.log(`[subscribeWebhookApp] Subscribing IG user ${igUserId} to fields: ${WEBHOOK_SUBSCRIBED_FIELDS}`);
       
-      // IMPORTANT: subscribed_apps must use graph.facebook.com, NOT graph.instagram.com
-      // graph.instagram.com returns 404 for this endpoint even with valid tokens.
-      const postRes = await metaFetch(`${FB_GRAPH_API_BASE}/${igUserId}/subscribed_apps`, {
+      // For Instagram Business Login, subscribed_apps uses graph.instagram.com with the Instagram-scoped token.
+      const postRes = await metaFetch(`${IG_GRAPH_API_BASE}/${igUserId}/subscribed_apps`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
@@ -183,7 +182,7 @@ export class InstagramService {
 
       // Diagnostic: verify subscribed fields after subscribing
       const getRes = await metaFetch(
-        `${FB_GRAPH_API_BASE}/${igUserId}/subscribed_apps?access_token=${accessToken}`,
+        `${IG_GRAPH_API_BASE}/${igUserId}/subscribed_apps?access_token=${accessToken}`,
         undefined,
         "webhook.subscriptions"
       );

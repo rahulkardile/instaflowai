@@ -376,9 +376,8 @@ export async function verifyAccess(req: Request, res: Response): Promise<void> {
     }
 
     // 4. Check subscribed apps (webhook subscription)
-    // IMPORTANT: subscribed_apps must use graph.facebook.com, not graph.instagram.com
     const subsRes = await metaFetch(
-      `${FB_GRAPH_API_BASE}/${igAccount.instagramUserId}/subscribed_apps?access_token=${igAccount.accessToken}`,
+      `${IG_GRAPH_API_BASE}/${igAccount.instagramUserId}/subscribed_apps?access_token=${igAccount.accessToken}`,
       undefined,
       "verify.subscriptions"
     );
