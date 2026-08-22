@@ -3,7 +3,7 @@ import { InstagramService } from "./instagram.service";
 import { handleCommentWebhook, handleMessagingWebhook } from "./instagram.webhook";
 import InstagramAccount from "../../models/InstagramAccounts";
 import ExecutionLog from "../../models/ExecutionLog";
-import { metaFetch } from "../../utils/metaFetch";
+import { metaFetch, redactMetaSecrets } from "../../utils/metaFetch";
 import { EXECUTION_ACTION, EXECUTION_STATUS, WEBHOOK_FIELD, IG_GRAPH_API_BASE, META_API_VERSION } from "../../constants";
 import type { ApiResponse } from "../../types/common.types";
 import type { MappedReel, WebhookEntry } from "../../types/instagram.types";
@@ -308,11 +308,12 @@ export async function verifyAccess(req: Request, res: Response): Promise<void> {
         tokenExpiresAt: igAccount.tokenExpiresAt,
       },
     };
-    const appId = process.env.INSTAGRAM_APP_ID ?? process.env.FACEBOOK_APP_ID;
+    const appId = process.env.FACEBOOK_APP_ID ?? process.env.INSTAGRAM_APP_ID;
     const appSecret =
+      process.env.FACEBOOK_APP_SECRET ??
       process.env.INSTAGRAM_APP_SECRET ??
       process.env.INSTAGRAM_APP_SECREAT ??
-      process.env.FACEBOOK_APP_SECRET;
+      "";
 
     // 1. Verify token by fetching /me
     const meRes = await metaFetch(
@@ -354,7 +355,10 @@ export async function verifyAccess(req: Request, res: Response): Promise<void> {
       );
       const commentsData = await commentsRes.json();
       results.graphApi_comments = commentsData;
-      console.log(`[verify-access] Fetched comments for media ${firstMediaId}:`, JSON.stringify(commentsData));
+      console.log(
+        `[verify-access] Fetched comments for media ${firstMediaId}:`,
+        JSON.stringify(redactMetaSecrets(commentsData))
+      );
     }
 
     // 4. Check subscribed apps (webhook subscription)
@@ -383,9 +387,10 @@ export async function verifyAccess(req: Request, res: Response): Promise<void> {
       };
     }
 
-    console.log(`[verify-access] Full results for user ${req.user!.userId}:`, JSON.stringify(results));
+    const safeResults = redactMetaSecrets(results);
+    console.log(`[verify-access] Full results for user ${req.user!.userId}:`, JSON.stringify(safeResults));
 
-    res.status(200).json({ success: true, data: results });
+    res.status(200).json({ success: true, data: safeResults });
   } catch (error) {
     console.error(`[verify-access] Error:`, error);
     res.status(500).json({

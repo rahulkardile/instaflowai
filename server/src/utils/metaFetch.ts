@@ -26,6 +26,32 @@ function redactUrl(url: string): string {
   }
 }
 
+export function redactMetaSecrets(value: unknown): unknown {
+  if (typeof value === "string") {
+    return redactUrl(value)
+      .replace(/access_token=([^&"'\s]+)/g, "access_token=<ACCESS_TOKEN>")
+      .replace(/access_token%3D([^&"'\s]+)/g, "access_token%3D<ACCESS_TOKEN>")
+      .replace(/Bearer\s+[A-Za-z0-9._|-]+/g, "Bearer <ACCESS_TOKEN>");
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => redactMetaSecrets(item));
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        key === "access_token" || key === "client_secret" || key === "code"
+          ? `<${key.toUpperCase()}>`
+          : redactMetaSecrets(item),
+      ])
+    );
+  }
+
+  return value;
+}
+
 function redactBody(body: BodyInit | null | undefined): string | undefined {
   if (!body) return undefined;
 
