@@ -3,7 +3,8 @@ import { InstagramService } from "./instagram.service";
 import { handleCommentWebhook, handleMessagingWebhook } from "./instagram.webhook";
 import InstagramAccount from "../../models/InstagramAccounts";
 import ExecutionLog from "../../models/ExecutionLog";
-import { EXECUTION_ACTION, EXECUTION_STATUS, WEBHOOK_FIELD, IG_GRAPH_API_BASE } from "../../constants";
+import { metaFetch } from "../../utils/metaFetch";
+import { EXECUTION_ACTION, EXECUTION_STATUS, WEBHOOK_FIELD, IG_GRAPH_API_BASE, META_API_VERSION } from "../../constants";
 import type { ApiResponse } from "../../types/common.types";
 import type { MappedReel, WebhookEntry } from "../../types/instagram.types";
 
@@ -307,10 +308,17 @@ export async function verifyAccess(req: Request, res: Response): Promise<void> {
         tokenExpiresAt: igAccount.tokenExpiresAt,
       },
     };
+    const appId = process.env.INSTAGRAM_APP_ID ?? process.env.FACEBOOK_APP_ID;
+    const appSecret =
+      process.env.INSTAGRAM_APP_SECRET ??
+      process.env.INSTAGRAM_APP_SECREAT ??
+      process.env.FACEBOOK_APP_SECRET;
 
     // 1. Verify token by fetching /me
-    const meRes = await fetch(
-      `${IG_GRAPH_API_BASE}/me?fields=id,username,account_type&access_token=${igAccount.accessToken}`
+    const meRes = await metaFetch(
+      `${IG_GRAPH_API_BASE}/me?fields=id,username,account_type&access_token=${igAccount.accessToken}`,
+      undefined,
+      "verify.me"
     );
     const meData = await meRes.json() as Record<string, unknown>;
     results.graphApi_me = meData;
@@ -328,8 +336,10 @@ export async function verifyAccess(req: Request, res: Response): Promise<void> {
     console.log(`[verify-access] Token valid for user ${igAccount.username} (id: ${igAccount.instagramUserId})`);
 
     // 2. Try fetching media list (tests instagram_business_basic)
-    const mediaRes = await fetch(
-      `${IG_GRAPH_API_BASE}/me/media?fields=id,caption,media_type&limit=5&access_token=${igAccount.accessToken}`
+    const mediaRes = await metaFetch(
+      `${IG_GRAPH_API_BASE}/me/media?fields=id,caption,media_type&limit=5&access_token=${igAccount.accessToken}`,
+      undefined,
+      "verify.media"
     );
     const mediaData = await mediaRes.json() as { data?: Array<{ id: string }> };
     results.graphApi_media = mediaData;
@@ -337,8 +347,10 @@ export async function verifyAccess(req: Request, res: Response): Promise<void> {
     // 3. If media exists, fetch comments on first item (tests instagram_business_manage_comments)
     const firstMediaId = mediaData.data?.[0]?.id;
     if (firstMediaId) {
-      const commentsRes = await fetch(
-        `${IG_GRAPH_API_BASE}/${firstMediaId}/comments?fields=id,text,timestamp,username&access_token=${igAccount.accessToken}`
+      const commentsRes = await metaFetch(
+        `${IG_GRAPH_API_BASE}/${firstMediaId}/comments?fields=id,text,timestamp,username&access_token=${igAccount.accessToken}`,
+        undefined,
+        "verify.comments"
       );
       const commentsData = await commentsRes.json();
       results.graphApi_comments = commentsData;
@@ -346,11 +358,30 @@ export async function verifyAccess(req: Request, res: Response): Promise<void> {
     }
 
     // 4. Check subscribed apps (webhook subscription)
-    const subsRes = await fetch(
-      `${IG_GRAPH_API_BASE}/${igAccount.instagramUserId}/subscribed_apps?access_token=${igAccount.accessToken}`
+    const subsRes = await metaFetch(
+      `${IG_GRAPH_API_BASE}/${igAccount.instagramUserId}/subscribed_apps?access_token=${igAccount.accessToken}`,
+      undefined,
+      "verify.subscriptions"
     );
     const subsData = await subsRes.json();
     results.graphApi_subscriptions = subsData;
+
+    // 5. Check app-level webhook subscriptions. This is separate from the
+    // per-IG-user /subscribed_apps edge above.
+    if (appId && appSecret) {
+      const appSubsRes = await metaFetch(
+        `https://graph.facebook.com/${META_API_VERSION}/${appId}/subscriptions?access_token=${appId}|${appSecret}`,
+        undefined,
+        "verify.app_subscriptions"
+      );
+      const appSubsData = await appSubsRes.json();
+      results.graphApi_app_subscriptions = appSubsData;
+    } else {
+      results.graphApi_app_subscriptions = {
+        skipped: true,
+        reason: "INSTAGRAM_APP_ID/FACEBOOK_APP_ID or app secret env var is missing",
+      };
+    }
 
     console.log(`[verify-access] Full results for user ${req.user!.userId}:`, JSON.stringify(results));
 

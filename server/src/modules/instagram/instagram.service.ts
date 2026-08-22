@@ -1,6 +1,7 @@
 import InstagramAccount from "../../models/InstagramAccounts";
 import Reel from "../../models/Reels";
 import { User } from "../../models/User";
+import { metaFetch } from "../../utils/metaFetch";
 import {
   IG_GRAPH_API_BASE,
   IG_OAUTH_BASE_URL,
@@ -65,11 +66,11 @@ export class InstagramService {
       code,
     });
 
-    const shortTokenRes = await fetch(IG_SHORT_TOKEN_URL, {
+    const shortTokenRes = await metaFetch(IG_SHORT_TOKEN_URL, {
       method: "POST",
       body: formData,
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    });
+    }, "oauth.short_token");
 
     const shortTokenData = (await shortTokenRes.json()) as IGShortTokenResponse;
 
@@ -86,7 +87,11 @@ export class InstagramService {
       access_token: shortTokenData.access_token,
     });
 
-    const longTokenRes = await fetch(`${IG_LONG_TOKEN_URL}?${longTokenParams.toString()}`);
+    const longTokenRes = await metaFetch(
+      `${IG_LONG_TOKEN_URL}?${longTokenParams.toString()}`,
+      undefined,
+      "oauth.long_token"
+    );
     const longTokenData = (await longTokenRes.json()) as IGLongTokenResponse;
 
     if (!longTokenData.access_token) {
@@ -97,8 +102,10 @@ export class InstagramService {
 
     // 3. Fetch IG profile (id + username).
     //    We fetch `id` as a string to avoid JS number precision loss on large IDs (> 2^53).
-    const profileRes = await fetch(
-      `${IG_GRAPH_API_BASE}/me?fields=id,username&access_token=${accessToken}`
+    const profileRes = await metaFetch(
+      `${IG_GRAPH_API_BASE}/me?fields=id,username&access_token=${accessToken}`,
+      undefined,
+      "profile.me"
     );
     const profileData = (await profileRes.json()) as IGProfileResponse;
 
@@ -151,14 +158,14 @@ export class InstagramService {
     try {
       console.log(`[subscribeWebhookApp] Subscribing IG user ${igUserId} to fields: ${WEBHOOK_SUBSCRIBED_FIELDS}`);
       
-      const postRes = await fetch(`${IG_GRAPH_API_BASE}/${igUserId}/subscribed_apps`, {
+      const postRes = await metaFetch(`${IG_GRAPH_API_BASE}/${igUserId}/subscribed_apps`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
           subscribed_fields: WEBHOOK_SUBSCRIBED_FIELDS,
           access_token: accessToken,
         }),
-      });
+      }, "webhook.subscribe");
 
       const postData = (await postRes.json()) as { success?: boolean; error?: { message: string; code: number } };
 
@@ -172,8 +179,10 @@ export class InstagramService {
       }
 
       // Diagnostic: verify subscribed fields after subscribing
-      const getRes = await fetch(
-        `${IG_GRAPH_API_BASE}/${igUserId}/subscribed_apps?access_token=${accessToken}`
+      const getRes = await metaFetch(
+        `${IG_GRAPH_API_BASE}/${igUserId}/subscribed_apps?access_token=${accessToken}`,
+        undefined,
+        "webhook.subscriptions"
       );
       const getData = (await getRes.json()) as { data?: unknown[]; error?: { message: string; code: number } };
       console.log(`[subscribeWebhookApp] Current subscriptions:`, JSON.stringify(getData.data ?? getData.error));
@@ -209,8 +218,10 @@ export class InstagramService {
 
     console.log("[fetchAndSyncReels] Fetching media for IG user:", igAccount.instagramUserId);
 
-    const mediaRes = await fetch(
-      `${IG_GRAPH_API_BASE}/me/media?fields=${IG_MEDIA_FIELDS}&access_token=${igAccount.accessToken}`
+    const mediaRes = await metaFetch(
+      `${IG_GRAPH_API_BASE}/me/media?fields=${IG_MEDIA_FIELDS}&access_token=${igAccount.accessToken}`,
+      undefined,
+      "media.list"
     );
     const mediaData = (await mediaRes.json()) as IGMediaResponse;
 
@@ -257,11 +268,11 @@ export class InstagramService {
   async replyToComment(commentId: string, message: string, accessToken: string): Promise<IGApiResponse> {
     console.log(`[replyToComment] Replying to comment ${commentId}`);
 
-    const res = await fetch(`${IG_GRAPH_API_BASE}/${commentId}/replies`, {
+    const res = await metaFetch(`${IG_GRAPH_API_BASE}/${commentId}/replies`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message, access_token: accessToken }),
-    });
+    }, "comments.reply");
 
     const data = (await res.json()) as IGApiResponse;
     console.log(`[replyToComment] Response:`, JSON.stringify(data));
@@ -288,7 +299,7 @@ export class InstagramService {
   ): Promise<IGApiResponse> {
     console.log(`[sendPrivateDM] Sending private reply for comment=${commentId} via IG user ${igUserId}`);
 
-    const res = await fetch(`${IG_GRAPH_API_BASE}/${igUserId}/messages`, {
+    const res = await metaFetch(`${IG_GRAPH_API_BASE}/${igUserId}/messages`, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${accessToken}`,
@@ -298,7 +309,7 @@ export class InstagramService {
         recipient: { comment_id: commentId },
         message: { text: message },
       }),
-    });
+    }, "messages.private_reply");
 
     const data = (await res.json()) as IGApiResponse;
     console.log(`[sendPrivateDM] Response:`, JSON.stringify(data));
@@ -325,7 +336,7 @@ export class InstagramService {
   ): Promise<IGApiResponse> {
     console.log(`[sendDMReply] Replying to IGSID=${recipientId} via IG user ${igUserId}`);
 
-    const res = await fetch(`${IG_GRAPH_API_BASE}/${igUserId}/messages`, {
+    const res = await metaFetch(`${IG_GRAPH_API_BASE}/${igUserId}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -334,7 +345,7 @@ export class InstagramService {
         messaging_type: "RESPONSE",
         access_token: accessToken,
       }),
-    });
+    }, "messages.dm_reply");
 
     const data = (await res.json()) as IGApiResponse;
     console.log(`[sendDMReply] Response:`, JSON.stringify(data));
@@ -357,11 +368,11 @@ export class InstagramService {
   ): Promise<IGPostCommentResponse> {
     console.log(`[postComment] Posting comment on media ${mediaId}`);
 
-    const res = await fetch(`${IG_GRAPH_API_BASE}/${mediaId}/comments`, {
+    const res = await metaFetch(`${IG_GRAPH_API_BASE}/${mediaId}/comments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message, access_token: accessToken }),
-    });
+    }, "comments.create");
 
     const data = (await res.json()) as IGPostCommentResponse;
     console.log(`[postComment] Response:`, JSON.stringify(data));
@@ -383,7 +394,11 @@ export class InstagramService {
     const fields = "id,text,timestamp,username,like_count,replies{id,text,timestamp,username}";
     const params = new URLSearchParams({ fields, access_token: accessToken });
 
-    const res = await fetch(`${IG_GRAPH_API_BASE}/${mediaId}/comments?${params.toString()}`);
+    const res = await metaFetch(
+      `${IG_GRAPH_API_BASE}/${mediaId}/comments?${params.toString()}`,
+      undefined,
+      "comments.list"
+    );
     const data = (await res.json()) as IGCommentsResponse;
 
     console.log(`[getComments] Found ${data.data?.length ?? 0} comment(s) for media ${mediaId}`);

@@ -1,6 +1,7 @@
 import InstagramAccount from "../../models/InstagramAccounts";
 import Automation from "../../models/Automation";
 import ExecutionLog from "../../models/ExecutionLog";
+import { metaFetch } from "../../utils/metaFetch";
 import { InstagramService } from "./instagram.service";
 import {
   EXECUTION_ACTION,
@@ -327,8 +328,10 @@ export async function handleMessagingWebhook(
     if (accountForMid?.accessToken) {
       try {
         console.log(`[webhook-dm] Fetching message details for mid="${mid}" via Graph API`);
-        const msgRes = await fetch(
-          `${IG_GRAPH_API_BASE}/${mid}?fields=id,created_time,from,to,message&access_token=${accountForMid.accessToken}`
+        const msgRes = await metaFetch(
+          `${IG_GRAPH_API_BASE}/${mid}?fields=id,created_time,from,to,message&access_token=${accountForMid.accessToken}`,
+          undefined,
+          "messages.get"
         );
         const msgData = (await msgRes.json()) as {
           from?: { id: string; username?: string };
