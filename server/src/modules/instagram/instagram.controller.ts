@@ -10,6 +10,20 @@ import type { MappedReel, WebhookEntry } from "../../types/instagram.types";
 
 const instagramService = new InstagramService();
 
+function normalizeUrl(url: string): string {
+  return url.trim().replace(/\/$/, "");
+}
+
+function getExpectedWebhookCallbackUrl(): string | null {
+  const publicBaseUrl =
+    process.env.SERVER_URL ??
+    process.env.PUBLIC_API_URL ??
+    process.env.API_BASE_URL ??
+    null;
+
+  return publicBaseUrl ? `${normalizeUrl(publicBaseUrl)}/api/instagram/webhook` : null;
+}
+
 // ─── GET /auth ─────────────────────────────────────────────────────────────
 
 export async function getAuthUrl(req: Request, res: Response): Promise<void> {
@@ -380,10 +394,36 @@ export async function verifyAccess(req: Request, res: Response): Promise<void> {
       );
       const appSubsData = await appSubsRes.json();
       results.graphApi_app_subscriptions = appSubsData;
+
+      const expectedCallbackUrl = getExpectedWebhookCallbackUrl();
+      const subscriptions = (appSubsData as {
+        data?: Array<{ object?: string; callback_url?: string; active?: boolean }>;
+      }).data ?? [];
+      const instagramSubscription = subscriptions.find((sub) => sub.object === "instagram");
+      const actualCallbackUrl = instagramSubscription?.callback_url ?? null;
+
+      results.webhook_callback_check = {
+        expectedCallbackUrl,
+        actualCallbackUrl,
+        matches:
+          expectedCallbackUrl && actualCallbackUrl
+            ? normalizeUrl(expectedCallbackUrl) === normalizeUrl(actualCallbackUrl)
+            : null,
+        active: instagramSubscription?.active ?? null,
+        note: expectedCallbackUrl
+          ? undefined
+          : "Set SERVER_URL, PUBLIC_API_URL, or API_BASE_URL to your public backend origin to enable callback comparison.",
+      };
     } else {
       results.graphApi_app_subscriptions = {
         skipped: true,
         reason: "INSTAGRAM_APP_ID/FACEBOOK_APP_ID or app secret env var is missing",
+      };
+      results.webhook_callback_check = {
+        expectedCallbackUrl: getExpectedWebhookCallbackUrl(),
+        actualCallbackUrl: null,
+        matches: null,
+        active: null,
       };
     }
 

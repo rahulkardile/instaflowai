@@ -38,6 +38,10 @@ export function redactMetaSecrets(value: unknown): unknown {
     return value.map((item) => redactMetaSecrets(item));
   }
 
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
   if (value && typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value).map(([key, item]) => [
